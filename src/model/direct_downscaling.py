@@ -19,7 +19,7 @@ class DirectDownscaling(L.LightningModule):
         column_km,
         resolution_input,
         resolution_target,
-        surface_channel,
+        single_channel,
         upper_channel,
         output_channel,
         crop_number,
@@ -39,7 +39,7 @@ class DirectDownscaling(L.LightningModule):
 
         self.global_encoder = GlobalEncoder(
             resolution=resolution_input,
-            surface_channel=surface_channel,
+            single_channel=single_channel,
             upper_channel=upper_channel,
         )
         self.cropper = RandomCropper((self.column_grid, self.column_grid))
@@ -47,7 +47,7 @@ class DirectDownscaling(L.LightningModule):
             target_horizontal_shape=(self.target_grid, self.target_grid),
             input_resolution=resolution_input,
             target_resolution=resolution_target,
-            surface_channel=surface_channel,
+            single_channel=single_channel,
             upper_channel=upper_channel + output_channel,
             out_channel=output_channel,
             include_sigma=True,
@@ -67,7 +67,7 @@ class DirectDownscaling(L.LightningModule):
         example_batch = 5
         self.example_input_array = {
             "surface": torch.randn(
-                example_batch, surface_channel, global_grid, global_grid
+                example_batch, single_channel, global_grid, global_grid
             ),
             "upper": torch.randn(
                 example_batch,
@@ -145,8 +145,8 @@ class DirectDownscaling(L.LightningModule):
         return output
 
     def training_step(self, batch, batch_idx):
-        surface, upper, target = batch
-        output = self(surface, upper)
+        single, upper, target = batch
+        output = self(single, upper)
         loss = nn.MSE(target, output)
 
         return loss

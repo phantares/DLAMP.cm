@@ -9,7 +9,7 @@ class GlobalEncoder(nn.Module):
     def __init__(
         self,
         resolution,
-        surface_channel,
+        single_channel,
         upper_channel,
         token_channel=768,
         map_channel=256,
@@ -18,7 +18,7 @@ class GlobalEncoder(nn.Module):
 
         self.resolution = resolution
 
-        self.sfc_conv = nn.Conv2d(surface_channel, 64, 1)
+        self.sfc_conv = nn.Conv2d(single_channel, 64, 1)
         self.up_conv = nn.Conv3d(upper_channel, 64, 1)
         self.pos_enc = PositionEncoder()
         self.conv = nn.Conv3d(64 + 3, 128, 1)

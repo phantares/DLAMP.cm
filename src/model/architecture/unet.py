@@ -13,7 +13,7 @@ class Unet(nn.Module):
         target_horizontal_shape,
         input_resolution,
         target_resolution,
-        surface_channel,
+        single_channel,
         upper_channel,
         out_channel,
         base_channel=128,
@@ -60,7 +60,7 @@ class Unet(nn.Module):
             film_channel,
         )
 
-        self.sfc_conv = nn.Conv2d(surface_channel, 64, 1)
+        self.sfc_conv = nn.Conv2d(single_channel, 64, 1)
         self.up_conv = nn.Conv3d(upper_channel, 64, 1)
         self.enc0 = nn.Conv3d(64 * 2, c1, 3, padding=1)
 
@@ -124,7 +124,6 @@ class Unet(nn.Module):
         time,
         sigma=None,
     ):
-        B, C, Z, H, W = input_upper.shape
 
         h_glob = self.emb_glob(global_token)
         h_pos = self.emb_pos(position)
