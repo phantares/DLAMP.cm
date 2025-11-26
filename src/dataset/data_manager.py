@@ -13,40 +13,25 @@ class DataManager(L.LightningDataModule):
     def setup(self, stage: str):
         if stage == "fit" or stage == "test":
             indexer = DataIndexer(
-                input_dir=self.hparams.input_dir,
-                val_day=self.hparams.val_day,
-                test_day=self.hparams.test_day,
-                case_day=self.hparams.case_day,
+                input_dir=self.hparams.input_dir, **self.hparams.split
             )
 
             self.train_dataset = DataDataset(
                 indexes=indexer.train_index,
-                input_single=self.hparams.input_single,
-                input_static=self.hparams.input_static,
-                input_upper=self.hparams.input_upper,
-                target=self.hparams.target,
-                z_input=self.hparams.z_input,
-                z_target=self.hparams.z_target,
+                **self.hparams.res,
+                **self.hparams.var,
             )
 
             self.val_dataset = DataDataset(
                 indexes=indexer.val_index,
-                input_single=self.hparams.input_single,
-                input_static=self.hparams.input_static,
-                input_upper=self.hparams.input_upper,
-                target=self.hparams.target,
-                z_input=self.hparams.z_input,
-                z_target=self.hparams.z_target,
+                **self.hparams.res,
+                **self.hparams.var,
             )
 
             self.test_dataset = DataDataset(
                 indexes=indexer.test_index,
-                input_single=self.hparams.input_single,
-                input_static=self.hparams.input_static,
-                input_upper=self.hparams.input_upper,
-                target=self.hparams.target,
-                z_input=self.hparams.z_input,
-                z_target=self.hparams.z_target,
+                **self.hparams.res,
+                **self.hparams.var,
             )
 
     def train_dataloader(self):
