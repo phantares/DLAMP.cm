@@ -1,0 +1,4 @@
+stats_file: stats_10km.json
+global_grid: 80
+resolution_input: 10
+resolution_target: 2
