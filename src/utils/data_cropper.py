@@ -14,13 +14,13 @@ class RandomCropper:
 
         for i in range(surface.size(0)):
             for _ in range(crop_number):
-                cropped_surface, cropped_upper, c_x, c_y = self.single_crop(
+                cropped_surface, cropped_upper, cx, cy = self.single_crop(
                     surface[i], upper[i]
                 )
                 surfaces.append(cropped_surface)
                 uppers.append(cropped_upper)
-                cxs.append(c_x)
-                cys.append(c_y)
+                cxs.append(cx)
+                cys.append(cy)
 
         return (
             torch.stack(surfaces),
