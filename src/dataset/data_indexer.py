@@ -25,7 +25,7 @@ class DataIndexer:
                     date_str = t.strftime("%Y%m%d")
                     day = t.day
 
-                    entry = {"file": file, "index": i}
+                    entry = {"file": file, "index": i, "time": t}
 
                     if date_str in self.case_day or day in self.test_day:
                         self.test_index.append(entry)
