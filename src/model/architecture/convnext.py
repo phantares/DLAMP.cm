@@ -3,7 +3,7 @@ import torch.nn as nn
 from timm.layers import DropPath
 from einops import rearrange
 
-from model.architecture import MLP
+from . import MLP
 
 
 class ConvNeXtLayer(nn.Module):
