@@ -1,6 +1,7 @@
 from datetime import datetime
 import calendar
 import numpy as np
+import torch
 
 
 SECONDS_IN_MINUTE = 60
@@ -9,7 +10,7 @@ HOURS_IN_DAY = 24
 SECONDS_IN_DAY = HOURS_IN_DAY * MINUTES_IN_HOUR * SECONDS_IN_MINUTE
 
 
-def encode_time(time: datetime):
+def encode_time(time: datetime, dtype=torch.float64):
     days_in_year = 366 if calendar.isleap(time.year) else 365
     doy = int(time.strftime("%j"))
     doy_sin = np.sin(2 * np.pi * doy / days_in_year)
@@ -23,4 +24,4 @@ def encode_time(time: datetime):
     tod_sin = np.sin(2 * np.pi * tod / SECONDS_IN_DAY)
     tod_cos = np.cos(2 * np.pi * tod / SECONDS_IN_DAY)
 
-    return doy_sin, doy_cos, tod_sin, tod_cos
+    return torch.tensor([doy_sin, doy_cos, tod_sin, tod_cos], dtype=dtype)
