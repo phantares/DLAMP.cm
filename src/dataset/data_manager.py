@@ -18,27 +18,30 @@ class DataManager(L.LightningDataModule):
 
             self.train_dataset = DataDataset(
                 indexes=indexer.train_index,
+                dtype=self.hparams.dtype,
                 **self.hparams.res,
                 **self.hparams.var,
             )
 
             self.val_dataset = DataDataset(
                 indexes=indexer.val_index,
+                dtype=self.hparams.dtype,
                 **self.hparams.res,
                 **self.hparams.var,
             )
 
             self.test_dataset = DataDataset(
                 indexes=indexer.test_index,
+                dtype=self.hparams.dtype,
                 **self.hparams.res,
                 **self.hparams.var,
             )
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, shuffle=True)
+        return DataLoader(self.train_dataset, shuffle=True, **self.hparams.train)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, shuffle=False)
+        return DataLoader(self.val_dataset, shuffle=False, **self.hparams.val)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, shuffle=False)
+        return DataLoader(self.test_dataset, shuffle=False, **self.hparams.test)
