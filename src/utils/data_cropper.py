@@ -6,36 +6,30 @@ class RandomCropper:
     def __init__(self, crop_shape):
         self.crop_shape = crop_shape
 
-    def crop(self, surface, upper, crop_number=1):
-        surfaces = []
-        uppers = []
-        cxs = []
-        cys = []
+    def crop(self, data, crop_number=1):
+        device = data.device
+        dtype = data.dtype
 
-        for i in range(surface.size(0)):
+        datas = []
+        tops = []
+        lefts = []
+
+        for i in range(data.size(0)):
             for _ in range(crop_number):
-                cropped_surface, cropped_upper, c_x, c_y = self.single_crop(
-                    surface[i], upper[i]
-                )
-                surfaces.append(cropped_surface)
-                uppers.append(cropped_upper)
-                cxs.append(c_x)
-                cys.append(c_y)
+                cropped_data, top, left = self.single_crop(data[i])
+
+                datas.append(cropped_data)
+                tops.append(top)
+                lefts.append(left)
 
         return (
-            torch.stack(surfaces),
-            torch.stack(uppers),
-            torch.tensor(cxs, dtype=surface.dtype),
-            torch.tensor(cys, dtype=surface.dtype),
+            torch.stack(datas).to(dtype),
+            torch.tensor(tops, dtype=dtype, device=device),
+            torch.tensor(lefts, dtype=dtype, device=device),
         )
 
-    def single_crop(self, surface, upper):
-        i, j, h, w = RandomCrop.get_params(surface, self.crop_shape)
+    def single_crop(self, data):
+        i, j, h, w = RandomCrop.get_params(data, self.crop_shape)
+        data = F.crop(data, i, j, h, w)
 
-        surface = F.crop(surface, i, j, h, w)
-        upper = F.crop(upper, i, j, h, w)
-
-        cx = i + (w - 1) / 2
-        cy = j + (h - 1) / 2
-
-        return surface, upper, cx, cy
+        return data, i, j

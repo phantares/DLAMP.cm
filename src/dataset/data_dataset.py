@@ -22,9 +22,11 @@ class DataDataset(Dataset):
         target,
         z_input,
         z_target,
+        dtype=torch.float64,
     ):
         super().__init__()
 
+        self.dtype = dtype
         self.indexes = indexes
         with open(stats_file, "r") as f:
             self.stats = json.load(f)
@@ -38,9 +40,10 @@ class DataDataset(Dataset):
         self.z_target = z_target
 
         factor = resolution_input / resolution_target
-        self.transform = Compose(
+        self.transform_input = Compose(
             [CenterCrop(int(global_grid * factor)), Resize(global_grid)]
         )
+        self.transform_target = Compose([CenterCrop(int(global_grid * factor))])
 
     def __len__(self):
         return len(self.indexes)
@@ -48,7 +51,7 @@ class DataDataset(Dataset):
     def __getitem__(self, index: int):
         file = self.indexes[index]["file"]
         time = self.indexes[index]["time"]
-        data_time = encode_time(time)
+        data_time = encode_time(time, dtype=self.dtype)
 
         t = self.indexes[index]["index"]
         data_single = []
@@ -70,7 +73,7 @@ class DataDataset(Dataset):
                 data = scale_z(self.stats, data, variable)
                 data_single.append(data)
 
-            data_single = self._preprocess(data_single)
+            data_single = self._preprocess(data_single, self.transform_input)
 
             for variable in self.upper:
                 data = np.array(f[variable][t,])
@@ -86,7 +89,7 @@ class DataDataset(Dataset):
 
                 data_upper.append(data)
 
-            data_upper = self._preprocess(data_upper)
+            data_upper = self._preprocess(data_upper, self.transform_input)
 
             for variable in self.target:
                 data = np.array(f[variable][t,])
@@ -102,13 +105,13 @@ class DataDataset(Dataset):
 
                 data_target.append(data)
 
-            data_target = self._preprocess(data_target)
+            data_target = self._preprocess(data_target, self.transform_target)
 
             return data_single, data_upper, data_time, data_target
 
-    def _preprocess(self, data):
+    def _preprocess(self, data, transform):
         data = np.array(data)
         data = torch.from_numpy(data)
-        data = self.transform(data)
+        data = transform(data)
 
-        return data
+        return data.to(self.dtype)

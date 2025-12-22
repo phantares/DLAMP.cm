@@ -1,0 +1,5 @@
+column_km: 100
+crop_number: 5
+P_mean: 0
+P_std: 1
+sigma_data: 0.5
