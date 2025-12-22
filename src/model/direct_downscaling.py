@@ -231,21 +231,59 @@ class DirectDownscaling(L.LightningModule):
             shaffle=True,
         )
 
-        loss = torch.mean(weight * nn.MSELoss(reduction="none")(output, column_target))
+        loss_var = nn.MSELoss(reduction="none")(output, column_target).mean(
+            dim=(0, -1, -2)
+        )
+        loss = torch.mean(weight * loss_var)
 
-        return loss
+        return loss, loss_var
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
 
     def training_step(self, batch, batch_idx):
         single, upper, time, target = batch
-        loss = self.general_step(single, upper, time, target)
+        loss, loss_var = self.general_step(single, upper, time, target)
+
+        self.log(
+            "train/total",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self._log_loss_var(
+            loss_var, self.hparams.target_var, self.hparams.z_target, "train"
+        )
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         single, upper, time, target = batch
-        loss = self.general_step(single, upper, time, target)
+        loss, loss_var = self.general_step(single, upper, time, target)
+
+        self.log(
+            "val/total",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self._log_loss_var(
+            loss_var, self.hparams.target_var, self.hparams.z_target, "val"
+        )
 
         return loss
+
+    def _log_loss_var(self, loss, variable_name, level, stage):
+        for z, lev in enumerate(level):
+            for n, var in enumerate(variable_name):
+                self.log(
+                    f"{stage}/{var}{lev}",
+                    loss[n, z],
+                    on_step=False,
+                    on_epoch=True,
+                    sync_dist=True,
+                )

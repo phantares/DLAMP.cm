@@ -9,12 +9,12 @@ from model import DirectDownscaling
 model = DirectDownscaling(
     global_grid=80,
     resolution_input=10,
-    column_km=100,
     resolution_target=2,
+    column_km=100,
+    crop_number=5,
     single_channel=8,
     upper_channel=5,
-    output_channel=6,
-    crop_number=5,
+    output_channel=5,
     P_mean=0,
     P_std=1,
     sigma_data=0.5,
@@ -52,6 +52,7 @@ model = DirectDownscaling(
         30,
         20,
     ],
+    target_var=["qc", "qr", "qi", "qs", "qg"],
 )
 summary = ModelSummary(model, max_depth=2)
 print(summary)
