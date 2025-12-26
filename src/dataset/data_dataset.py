@@ -16,6 +16,8 @@ class DataDataset(Dataset):
         global_grid,
         resolution_input,
         resolution_target,
+        column_km,
+        crop_number,
         input_single,
         input_static,
         input_upper,
@@ -25,6 +27,9 @@ class DataDataset(Dataset):
         dtype=torch.float64,
     ):
         super().__init__()
+
+        self.target_grid = column_km // resolution_target
+        self.crop_number = crop_number
 
         self.dtype = dtype
         self.indexes = indexes
@@ -39,11 +44,10 @@ class DataDataset(Dataset):
         self.z_input = z_input
         self.z_target = z_target
 
-        factor = resolution_input / resolution_target
+        self.factor = resolution_input / resolution_target
         self.transform_input = Compose(
-            [CenterCrop(int(global_grid * factor)), Resize(global_grid)]
+            [CenterCrop(int(global_grid * self.factor)), Resize(global_grid)]
         )
-        self.transform_target = Compose([CenterCrop(int(global_grid * factor))])
 
     def __len__(self):
         return len(self.indexes)
@@ -91,27 +95,50 @@ class DataDataset(Dataset):
 
             data_upper = self._preprocess(data_upper, self.transform_input)
 
-            for variable in self.target:
-                data = np.array(f[variable][t,])
-                data = data[z_tar,]
+            H, W = data_single.shape[-2], data_single.shape[-1]
+            tops = []
+            lefts = []
+            for _ in range(self.crop_number):
+                top = np.random.randint(0, H * self.factor - self.target_grid + 1)
+                left = np.random.randint(0, W * self.factor - self.target_grid + 1)
 
-                for k, z in enumerate(self.z_target):
-                    scaled_data = scale_z(
-                        self.stats,
-                        data[k,],
-                        f"{variable}{z}",
+                tops.append(top)
+                lefts.append(left)
+
+                datas = []
+
+                for variable in self.target:
+                    data = np.array(
+                        f[variable][
+                            t,
+                            :,
+                            top : top + self.target_grid,
+                            left : left + self.target_grid,
+                        ]
                     )
-                    data[k,] = scaled_data
+                    data = data[z_tar,]
 
-                data_target.append(data)
+                    for k, z in enumerate(self.z_target):
+                        scaled_data = scale_z(
+                            self.stats,
+                            data[k,],
+                            f"{variable}{z}",
+                        )
+                        data[k,] = scaled_data
 
-            data_target = self._preprocess(data_target, self.transform_target)
+                    datas.append(data)
+                data_target.append(datas)
 
-            return data_single, data_upper, data_time, data_target
+            data_target = self._preprocess(data_target)
+            tops = torch.tensor(tops, dtype=self.dtype)
+            lefts = torch.tensor(lefts, dtype=self.dtype)
 
-    def _preprocess(self, data, transform):
+        return data_single, data_upper, data_time, data_target, tops, lefts
+
+    def _preprocess(self, data, transform=None):
         data = np.array(data)
         data = torch.from_numpy(data)
-        data = transform(data)
+        if transform is not None:
+            data = transform(data)
 
         return data.to(self.dtype)
