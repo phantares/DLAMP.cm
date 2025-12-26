@@ -2,7 +2,8 @@ import lightning as L
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.transforms.v2 import RandomCrop, functional as Ftrans
+from torchvision.transforms.v2 import functional as Ftrans
+from einops import rearrange
 
 
 from utils import interpolate_z
@@ -78,24 +79,30 @@ class DirectDownscaling(L.LightningModule):
             ),
             "time": torch.randn(example_batch, 4),
             "noise": torch.randn(
-                example_batch * crop_number,
+                example_batch,
+                crop_number,
                 output_channel,
                 len(z_target),
                 target_grid,
                 target_grid,
             ),
             "sigma": (
-                torch.randn(example_batch * crop_number, 1, 1, 1, 1) * P_std + P_mean
+                torch.randn(example_batch, crop_number, 1, 1, 1, 1) * P_std + P_mean
             )
             .exp()
             .clamp(min=sigma_min, max=sigma_max),
-            "column_top": torch.randn(example_batch * crop_number),
-            "column_left": torch.randn(example_batch * crop_number),
+            "column_top": torch.randn(example_batch, crop_number),
+            "column_left": torch.randn(example_batch, crop_number),
         }
 
     def forward(
         self, single, upper, time, noise, sigma, column_top, column_left, shaffle=False
     ):
+        noise = rearrange(noise, "b n c z h w -> (b n) c z h w")
+        sigma = rearrange(sigma, "b n 1 1 1 1 -> (b n) 1 1 1 1")
+        column_top = rearrange(column_top, "b n -> (b n)")
+        column_left = rearrange(column_left, "b n -> (b n)")
+
         c_skip = self.hparams.sigma_data**2 / (sigma**2 + self.hparams.sigma_data**2)
         c_out = (
             sigma
@@ -178,62 +185,33 @@ class DirectDownscaling(L.LightningModule):
         )
 
         output = c_skip * noise + c_out * F_x
+        output = rearrange(output, "(b n) c z h w -> b n c z h w", n=self.crop_number)
 
         return output
 
-    def general_step(self, single, upper, time, target):
-        device = single.device
-        dtype = single.dtype
-
-        tops = []
-        lefts = []
-        column_target = []
-        for b in range(single.shape[0]):
-            for _ in range(self.crop_number):
-                top, left, h, w = RandomCrop.get_params(
-                    single[b], (self.hparams.column_grid, self.hparams.column_grid)
-                )
-                column_target.append(
-                    Ftrans.crop(
-                        target[b],
-                        int(top * self.factor),
-                        int(left * self.factor),
-                        self.hparams.target_grid,
-                        self.hparams.target_grid,
-                    )
-                )
-
-                tops.append(top)
-                lefts.append(left)
-
-        tops = torch.tensor(tops, dtype=dtype, device=device)
-        lefts = torch.tensor(lefts, dtype=dtype, device=device)
-        column_target = torch.stack(column_target).to(dtype)
-
+    def general_step(self, single, upper, time, target, column_top, column_left):
         rnd_normal = torch.randn(
-            [column_target.shape[0], 1, 1, 1, 1], device=target.device
+            [target.shape[0], self.crop_number, 1, 1, 1, 1], device=target.device
         )
         sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
         ) ** 2
-        noise = torch.randn_like(column_target) * sigma
+        noise = torch.randn_like(target) * sigma
 
         output = self(
             single=single,
             upper=upper,
             time=time,
-            noise=column_target + noise,
+            noise=target + noise,
             sigma=sigma,
-            column_top=tops,
-            column_left=lefts,
+            column_top=column_top,
+            column_left=column_left,
             shaffle=True,
         )
 
-        loss_var = nn.MSELoss(reduction="none")(output, column_target).mean(
-            dim=(0, -1, -2)
-        )
+        loss_var = nn.MSELoss(reduction="none")(output, target).mean(dim=(0, 1, -1, -2))
         loss = torch.mean(weight * loss_var)
 
         return loss, loss_var
@@ -242,8 +220,10 @@ class DirectDownscaling(L.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
 
     def training_step(self, batch, batch_idx):
-        single, upper, time, target = batch
-        loss, loss_var = self.general_step(single, upper, time, target)
+        single, upper, time, target, column_top, column_left = batch
+        loss, loss_var = self.general_step(
+            single, upper, time, target, column_top, column_left
+        )
 
         self.log(
             "train/total",
@@ -260,8 +240,10 @@ class DirectDownscaling(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        single, upper, time, target = batch
-        loss, loss_var = self.general_step(single, upper, time, target)
+        single, upper, time, target, column_top, column_left = batch
+        loss, loss_var = self.general_step(
+            single, upper, time, target, column_top, column_left
+        )
 
         self.log(
             "val/total",
