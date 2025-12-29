@@ -11,5 +11,5 @@ wheels/
 
 .env
 experiments/*
-logs/*
+wandb/
 checkpoints/*

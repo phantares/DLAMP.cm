@@ -11,6 +11,9 @@ experiment:
 
 dtype: float64
 
+logger:
+  mode: offline
+
 hydra:
   job:
     config:

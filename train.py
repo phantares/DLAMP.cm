@@ -50,9 +50,9 @@ def main(cfg) -> None:
     logger = WandbLogger(
         project="DLAMP.cm",
         name=experiment_name,
-        save_dir=Path("logs", experiment_name),
+        save_dir=".",
         log_model=False,
-        offline=True,
+        mode=cfg.logger.mode,
     )
 
     callbacks = ModelCheckpoint(
