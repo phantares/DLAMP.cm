@@ -28,6 +28,7 @@ class DataDataset(Dataset):
     ):
         super().__init__()
 
+        self.column_grid = column_km // resolution_input
         self.target_grid = column_km // resolution_target
         self.crop_number = crop_number
 
@@ -45,9 +46,14 @@ class DataDataset(Dataset):
         self.z_target = z_target
 
         self.factor = resolution_input / resolution_target
-        self.transform_input = Compose(
-            [CenterCrop(int(global_grid * self.factor)), Resize(global_grid)]
+        global_grid_hr = int(global_grid * self.factor)
+        self.transform_grid = Compose(
+            [CenterCrop(global_grid_hr), Resize(global_grid, antialias=False)]
         )
+        self.transform_input = Compose(
+            [CenterCrop(global_grid_hr), Resize(global_grid)]
+        )
+        self.transform_target = Compose([CenterCrop(global_grid_hr)])
 
     def __len__(self):
         return len(self.indexes)
@@ -72,12 +78,19 @@ class DataDataset(Dataset):
                 data = scale_z(self.stats, data, variable)
                 data_single.append(data)
 
+            data_single = self._preprocess(data_single, self.transform_input)
+
             for variable in self.static:
                 data = np.array(f[variable])
                 data = scale_z(self.stats, data, variable)
-                data_single.append(data)
+                data = data[np.newaxis, ...]
 
-            data_single = self._preprocess(data_single, self.transform_input)
+                if variable in ["longitude", "latitude"]:
+                    data = self._preprocess(data, transform=self.transform_grid)
+                else:
+                    data = self._preprocess(data, transform=self.transform_input)
+
+                data_single = torch.cat((data_single, data), axis=0)
 
             for variable in self.upper:
                 data = np.array(f[variable][t,])
@@ -99,8 +112,8 @@ class DataDataset(Dataset):
             tops = []
             lefts = []
             for _ in range(self.crop_number):
-                top = np.random.randint(0, H * self.factor - self.target_grid + 1)
-                left = np.random.randint(0, W * self.factor - self.target_grid + 1)
+                top = np.random.randint(0, H - self.column_grid + 1)
+                left = np.random.randint(0, W - self.column_grid + 1)
 
                 tops.append(top)
                 lefts.append(left)
@@ -108,15 +121,17 @@ class DataDataset(Dataset):
                 datas = []
 
                 for variable in self.target:
-                    data = np.array(
-                        f[variable][
-                            t,
-                            :,
-                            top : top + self.target_grid,
-                            left : left + self.target_grid,
-                        ]
-                    )
+                    data = np.array(f[variable][t,])
                     data = data[z_tar,]
+                    data = self._preprocess(data, self.transform_target)
+
+                    data_top = int(top * self.factor)
+                    data_left = int(left * self.factor)
+                    data = data[
+                        ...,
+                        data_top : data_top + self.target_grid,
+                        data_left : data_left + self.target_grid,
+                    ]
 
                     for k, z in enumerate(self.z_target):
                         scaled_data = scale_z(
