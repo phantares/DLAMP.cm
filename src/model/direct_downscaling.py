@@ -100,8 +100,6 @@ class DirectDownscaling(L.LightningModule):
     ):
         noise = rearrange(noise, "b n c z h w -> (b n) c z h w")
         sigma = rearrange(sigma, "b n 1 1 1 1 -> (b n) 1 1 1 1")
-        column_top = rearrange(column_top, "b n -> (b n)")
-        column_left = rearrange(column_left, "b n -> (b n)")
 
         c_skip = self.hparams.sigma_data**2 / (sigma**2 + self.hparams.sigma_data**2)
         c_out = (
@@ -117,46 +115,58 @@ class DirectDownscaling(L.LightningModule):
         global_map = global_map.repeat_interleave(self.crop_number, dim=0)
         time = time.repeat_interleave(self.crop_number, dim=0)
 
-        single = single.repeat_interleave(self.crop_number, dim=0)
-        upper = upper.repeat_interleave(self.crop_number, dim=0)
         column_single = []
         column_upper = []
         for b in range(single.shape[0]):
-            column_single.append(
-                Ftrans.crop(
-                    single[b],
-                    int(column_top[b]),
-                    int(column_left[b]),
-                    self.hparams.column_grid,
-                    self.hparams.column_grid,
+            for n in range(self.crop_number):
+                column_single.append(
+                    Ftrans.crop(
+                        single[b],
+                        int(column_top[b, n]),
+                        int(column_left[b, n]),
+                        self.hparams.column_grid,
+                        self.hparams.column_grid,
+                    )
                 )
-            )
-            column_upper.append(
-                Ftrans.crop(
-                    upper[b],
-                    int(column_top[b]),
-                    int(column_left[b]),
-                    self.hparams.column_grid,
-                    self.hparams.column_grid,
+                column_upper.append(
+                    Ftrans.crop(
+                        upper[b],
+                        int(column_top[b, n]),
+                        int(column_left[b, n]),
+                        self.hparams.column_grid,
+                        self.hparams.column_grid,
+                    )
                 )
-            )
-        column_single = torch.stack(column_single)
-        column_upper = torch.stack(column_upper)
+
+        column_single = F.interpolate(
+            torch.stack(column_single),
+            size=(self.hparams.target_grid, self.hparams.target_grid),
+        )
+
+        column_upper = rearrange(torch.stack(column_upper), "b c z h w -> b (c z) h w")
+        column_upper = F.interpolate(
+            column_upper,
+            size=(self.hparams.target_grid, self.hparams.target_grid),
+            mode="bilinear",
+            align_corners=False,
+        )
+        column_upper = rearrange(
+            column_upper, "b (c z) h w -> b c z h w", c=self.hparams.upper_channel
+        )
 
         column_upper_all = interpolate_z(
             column_upper, self.hparams.z_input, self.hparams.z_target
         )
+        input_upper = torch.cat([column_upper_all, noise * c_in], dim=1)
 
-        noise_lr = F.adaptive_avg_pool3d(
-            noise, (noise.size(-3), self.hparams.column_grid, self.hparams.column_grid)
-        )
-        input_upper = torch.cat([column_upper_all, noise_lr * c_in], dim=1)
+        column_top = rearrange(column_top, "b n -> (b n)")
+        column_left = rearrange(column_left, "b n -> (b n)")
 
         global_map = project_global_to_roi(
             global_map,
             column_left,
             column_top,
-            output_size=self.hparams.column_grid,
+            output_size=self.hparams.target_grid,
             window_size=self.hparams.column_grid,
             global_size=self.hparams.global_grid,
         )
