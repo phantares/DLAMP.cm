@@ -33,11 +33,6 @@ class Unet(nn.Module):
         self.include_sigma = include_sigma
         self.res = input_resolution
         self.target_shape = target_horizontal_shape
-        us_layer, self.us_scale = calculate_factor(
-            input_resolution // target_resolution
-        )
-        if self.us_scale > 1:
-            us_layer += 1
 
         c1, c2, c3 = base_channel, int(base_channel * 5 / 4), int(base_channel * 3 / 2)
         film_channel = base_channel * 2
@@ -69,38 +64,32 @@ class Unet(nn.Module):
         self.enc2 = ResBlock(c2, c2, dropout=drop)
         self.ds2 = nn.Conv3d(c2, c3, 3, stride=(1, 2, 2), padding=1)
 
-        self.mid_dil = ResBlock(c2, c2, dilation=2, dropout=drop)
         self.mid = ResBlock(c3, c3, dropout=drop)
 
-        self.us2 = nn.ConvTranspose3d(c3, c2, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        self.us2 = nn.ConvTranspose3d(
+            c3,
+            c2,
+            kernel_size=(1, 3, 3),
+            stride=(1, 2, 2),
+            padding=(0, 1, 1),
+            output_padding=(0, 0, 0),
+        )
         self.dec2 = ResBlock(c2 + c2, c2, dropout=drop)
-        self.us1 = nn.ConvTranspose3d(c2, c1, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        self.us1 = nn.ConvTranspose3d(
+            c2,
+            c1,
+            kernel_size=(1, 3, 3),
+            stride=(1, 2, 2),
+            padding=(0, 1, 1),
+            output_padding=(0, 1, 1),
+        )
         self.dec1 = ResBlock(c1 + c1, c1, dropout=drop)
-        c_out = c1
 
-        self.upsample = nn.ModuleList()
-        for n in range(us_layer):
-            c_in = c1 // 2**n
-            c_out = c1 // 2 ** (n + 1)
-
-            self.upsample.append(
-                nn.ConvTranspose3d(c_in, c_out, kernel_size=(1, 2, 2), stride=(1, 2, 2))
-            )
-
-            dec = ResBlock(c_out, c_out, dropout=drop)
-            self._add_film(dec, film_channel)
-            self.upsample.append(dec)
-
-        if self.us_scale > 1:
-            self.refine = ResBlock(c_out, c_out, dropout=drop)
-            self._add_film(self.refine, film_channel)
-
-        self.output = nn.Conv3d(c_out, out_channel, kernel_size=1)
+        self.output = nn.Conv3d(c1, out_channel, kernel_size=1)
 
         for block in [
             self.enc1,
             self.enc2,
-            self.mid_dil,
             self.mid,
             self.dec2,
             self.dec1,
@@ -160,30 +149,16 @@ class Unet(nn.Module):
         e2 = self.enc2(d1, film_base)  # (B,c2,Z+1,H/2,W/2)
         e2 = self.xattn2(e2, global_map_tokens)
 
-        if e2.size(-1) > 5 and e2.size(-2) > 5:
-            d2 = self.ds2(e2)  # (B,c3,Z+1,H/4,H/4)
+        d2 = self.ds2(e2)  # (B,c3,Z+1,H/4,H/4)
 
-            mid = self.mid(d2, film_base)  # (B,c3,Z+1,H/4,H/4)
-            mid = self.xattn_mid(mid, global_map_tokens)
+        mid = self.mid(d2, film_base)  # (B,c3,Z+1,H/4,H/4)
+        mid = self.xattn_mid(mid, global_map_tokens)
 
-            u2 = self.us2(mid)  # (B,c2,Z+1,H/2,H/2)
-            u2 = crop_center(u2, e2)
-            u2 = self.dec2(torch.cat([u2, e2], dim=1), film_base)
+        u2 = self.us2(mid)  # (B,c2,Z+1,H/2,H/2)
+        u2 = self.dec2(torch.cat([u2, e2], dim=1), film_base)
 
-            u1 = self.us1(u2)  # (B,c1,Z+1,H,W)
-
-        else:
-            mid = self.mid_dil(e2)
-            u1 = self.us1(mid)
-
-        u1 = crop_center(u1, e1)
+        u1 = self.us1(u2)  # (B,c1,Z+1,H,W)
         u1 = self.dec1(torch.cat([u1, e1], dim=1), film_base)
-
-        for layer in self.upsample:
-            u1 = layer(u1)
-        if self.us_scale > 1:
-            u1 = F.interpolate(u1, (u1.size(-3), *self.target_shape))
-            u1 = self.refine(u1)
 
         out = self.output(u1)  # (B,Cout,Z+1,H,W)
 
