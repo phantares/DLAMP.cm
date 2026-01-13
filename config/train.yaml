@@ -3,7 +3,7 @@ defaults:
   - dataset/split: rwrf_2022
   - dataset/var : cm
   - dataset/res: 10km
-  - model/architecture: cm_10km
+  - model/architecture: cm
   - _self_
 
 experiment:
