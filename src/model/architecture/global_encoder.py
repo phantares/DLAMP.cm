@@ -11,8 +11,10 @@ class GlobalEncoder(nn.Module):
         resolution,
         single_channel,
         upper_channel,
-        token_channel=768,
+        use_map=True,
         map_channel=256,
+        use_token=True,
+        token_channel=768,
     ):
         super().__init__()
 
@@ -32,7 +34,9 @@ class GlobalEncoder(nn.Module):
         self.down4 = nn.Conv3d(256, 256, 3, padding=1, stride=(1, 2, 2))
         self.proj = nn.Conv3d(256, map_channel, 1)
         self.scale_map = MLP(1, map_channel // 2, map_channel * 2)
+        self.use_map = use_map
 
+        self.use_token = use_token
         self.pool_adpt = nn.AdaptiveAvgPool3d((14, 10, 10))
         self.sin_pos_enc = SinusoidalPositionEncoder()
         self.k_proj = nn.Conv3d(map_channel, 240, 1)
@@ -69,21 +73,26 @@ class GlobalEncoder(nn.Module):
             + beta[:, :, None, None, None]
         )
 
-        canon = self.pool_adpt(global_map)
-        k = rearrange(
-            self.sin_pos_enc(
-                self.k_proj(canon),
-                upper.size(-2) * self.resolution,
-                upper.size(-1) * self.resolution,
-            ),
-            "b c z h w -> b (z h w) c",
-        )  # (B,(Z+1)*H/16*W/16,240)
-        v = rearrange(self.v_proj(canon), "b c z h w -> b (z h w) c")
-        q = repeat(self.q, "1 1 c -> b 1 c", b=x.size(0))  # (B,1,240)
-        attn = self.softmax(
-            q @ k.transpose(-1, -2) * self.scale
-        )  # (B,1,(Z+1)*H/16*W/16)
-        token = attn @ v  # (B,1,240)
-        global_token = self.pool_mlp(token.squeeze(1))  # (B,C_tk)
+        global_token = None
+        if self.use_token:
+            canon = self.pool_adpt(global_map)
+            k = rearrange(
+                self.sin_pos_enc(
+                    self.k_proj(canon),
+                    upper.size(-2) * self.resolution,
+                    upper.size(-1) * self.resolution,
+                ),
+                "b c z h w -> b (z h w) c",
+            )  # (B,(Z+1)*H/16*W/16,240)
+            v = rearrange(self.v_proj(canon), "b c z h w -> b (z h w) c")
+            q = repeat(self.q, "1 1 c -> b 1 c", b=x.size(0))  # (B,1,240)
+            attn = self.softmax(
+                q @ k.transpose(-1, -2) * self.scale
+            )  # (B,1,(Z+1)*H/16*W/16)
+            token = attn @ v  # (B,1,240)
+            global_token = self.pool_mlp(token.squeeze(1))  # (B,C_tk)
+
+        if not self.use_map:
+            global_map = None
 
         return global_token, global_map

@@ -53,6 +53,10 @@ model = DirectDownscaling(
         20,
     ],
     target_var=["qc", "qr", "qi", "qs", "qg"],
+    enable_global_encoder=True,
+    use_global_token=True,
+    use_global_map_embed=True,
+    use_global_map_cross_attn=True,
 )
 summary = ModelSummary(model, max_depth=2)
 print(summary)
