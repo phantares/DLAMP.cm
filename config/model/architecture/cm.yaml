@@ -1,0 +1,8 @@
+P_mean: 0
+P_std: 1
+sigma_data: 0.5
+global_encoding:
+  enabled: True
+  use_token: True
+  use_map_embed: True
+  use_map_cross_attn: True

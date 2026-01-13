@@ -33,6 +33,10 @@ class DirectDownscaling(L.LightningModule):
         sigma_data,
         sigma_min=None,
         sigma_max=None,
+        enable_global_encoder=True,
+        use_global_token=True,
+        use_global_map_embed=True,
+        use_global_map_cross_attn=True,
     ):
         super().__init__()
 
@@ -50,11 +54,21 @@ class DirectDownscaling(L.LightningModule):
         self.crop_number = crop_number
         self.factor = resolution_input / resolution_target
 
-        self.global_encoder = GlobalEncoder(
-            resolution=resolution_input,
-            single_channel=single_channel,
-            upper_channel=upper_channel,
-        )
+        self.enable_global_encoder = enable_global_encoder
+        self.use_global_map = use_global_map_embed or use_global_map_cross_attn
+
+        if enable_global_encoder and (use_global_token or self.use_global_map):
+            self.global_encoder = GlobalEncoder(
+                resolution=resolution_input,
+                single_channel=single_channel,
+                upper_channel=upper_channel,
+                use_map=self.use_global_map,
+                use_token=use_global_token,
+            )
+        else:
+            self.enable_global_encoder = False
+            self.use_global_map = False
+
         self.unet = Unet(
             target_horizontal_shape=(target_grid, target_grid),
             input_resolution=resolution_input,
@@ -62,6 +76,9 @@ class DirectDownscaling(L.LightningModule):
             single_channel=single_channel,
             upper_channel=upper_channel + output_channel,
             out_channel=output_channel,
+            use_token=enable_global_encoder and use_global_token,
+            use_map_embed=enable_global_encoder and use_global_map_embed,
+            use_map_cross_attn=enable_global_encoder and use_global_map_cross_attn,
             include_sigma=True,
         )
 
@@ -110,10 +127,19 @@ class DirectDownscaling(L.LightningModule):
         c_in = 1 / (self.hparams.sigma_data**2 + sigma**2).sqrt()
         c_noise = sigma.log() / 4
 
-        global_token, global_map = self.global_encoder(single, upper)
-        global_token = global_token.repeat_interleave(self.crop_number, dim=0)
-        global_map = global_map.repeat_interleave(self.crop_number, dim=0)
         time = time.repeat_interleave(self.crop_number, dim=0)
+
+        if self.enable_global_encoder:
+            global_token, global_map = self.global_encoder(single, upper)
+
+            if global_token is not None:
+                global_token = global_token.repeat_interleave(self.crop_number, dim=0)
+            if global_map is not None:
+                global_map = global_map.repeat_interleave(self.crop_number, dim=0)
+
+        else:
+            global_token = None
+            global_map = None
 
         column_single = []
         column_upper = []
@@ -162,35 +188,44 @@ class DirectDownscaling(L.LightningModule):
         column_top = rearrange(column_top, "b n -> (b n)")
         column_left = rearrange(column_left, "b n -> (b n)")
 
-        global_map = project_global_to_roi(
-            global_map,
-            column_left,
-            column_top,
-            output_size=self.hparams.target_grid,
-            window_size=self.hparams.column_grid,
-            global_size=self.hparams.global_grid,
-        )
-        global_map_upper = interpolate_z(
-            global_map[:, :, 1:, :, :], self.hparams.z_input, self.hparams.z_target
-        )
-        global_map_hr = torch.cat(
-            [global_map[:, :, 0:1, :, :], global_map_upper], dim=-3
-        )
+        if global_map is not None and self.use_global_map:
+            global_map = project_global_to_roi(
+                global_map,
+                column_left,
+                column_top,
+                output_size=self.hparams.target_grid,
+                window_size=self.hparams.column_grid,
+                global_size=self.hparams.global_grid,
+            )
+            global_map_upper = interpolate_z(
+                global_map[:, :, 1:, :, :], self.hparams.z_input, self.hparams.z_target
+            )
 
+            global_map_hr = torch.cat(
+                [global_map[:, :, 0:1, :, :], global_map_upper], dim=-3
+            )
+
+        else:
+            global_map_hr = None
         if shaffle:
             indices = torch.randperm(input_upper.size(0))
         else:
             indices = torch.arange(input_upper.size(0), device=column_single.device)
+
         F_x = self.unet(
-            column_single[indices, ...],
-            input_upper[indices, ...],
-            global_token[indices, ...],
-            global_map_hr[indices, ...],
-            torch.stack(
+            input_surface=column_single[indices, ...],
+            input_upper=input_upper[indices, ...],
+            position=torch.stack(
                 [column_top[indices, ...], column_left[indices, ...]],
                 dim=1,
             ),
-            time[indices, ...],
+            time=time[indices, ...],
+            global_token=(
+                global_token[indices, ...] if global_token is not None else None
+            ),
+            global_map=(
+                global_map_hr[indices, ...] if global_map_hr is not None else None
+            ),
             sigma=c_noise[indices, ...].flatten(1),
         )
 
