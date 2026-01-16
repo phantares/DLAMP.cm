@@ -1,6 +1,4 @@
 train:
   batch_size: 2 
-  num_workers: 8
 val:
   batch_size: 2
-  num_workers: 8

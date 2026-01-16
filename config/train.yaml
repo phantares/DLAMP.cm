@@ -2,7 +2,7 @@ defaults:
   - dataset: base
   - dataset/split: rwrf_2022
   - dataset/var : cm
-  - dataset/res: 10km
+  - dataset/res: 4km
   - model/architecture: cm
   - _self_
 

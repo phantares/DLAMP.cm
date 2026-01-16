@@ -271,7 +271,7 @@ class DirectDownscaling(L.LightningModule):
         )
 
         self.log(
-            "train/total",
+            "total_train",
             loss,
             on_step=True,
             on_epoch=True,
@@ -291,7 +291,7 @@ class DirectDownscaling(L.LightningModule):
         )
 
         self.log(
-            "val/total",
+            "total_val",
             loss,
             on_step=True,
             on_epoch=True,

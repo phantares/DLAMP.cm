@@ -57,17 +57,21 @@ def main(cfg) -> None:
 
     callbacks = ModelCheckpoint(
         dirpath=Path("checkpoints", experiment_name),
-        filename="{epoch}-{step}-{val_loss:.6f}",
+        filename="{epoch}-{step}-{total_val_epoch:.6f}",
         save_top_k=3,
-        monitor="val/total",
+        monitor="total_val_epoch",
         mode="min",
     )
+
+    gpu_count = torch.cuda.device_count()
+    strategy = "ddp" if gpu_count > 1 else "auto"
     trainer = Trainer(
         max_epochs=10,
         logger=logger,
         callbacks=callbacks,
-        # strategy="ddp",  # if you use multi-GPU
         accelerator="gpu",
+        strategy=strategy,
+        devices=gpu_count,
     )
 
     trainer.fit(model, datamodule)
