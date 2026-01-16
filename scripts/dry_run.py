@@ -7,8 +7,8 @@ from pytorch_lightning.utilities.model_summary import ModelSummary
 from model import DirectDownscaling
 
 model = DirectDownscaling(
-    global_grid=80,
-    resolution_input=10,
+    global_grid=224,
+    resolution_input=4,
     resolution_target=2,
     column_km=100,
     crop_number=5,
