@@ -11,7 +11,6 @@ model = DirectDownscaling(
     resolution_input=4,
     resolution_target=2,
     column_km=100,
-    crop_number=5,
     single_channel=8,
     upper_channel=5,
     output_channel=5,

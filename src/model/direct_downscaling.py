@@ -3,10 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms.v2 import functional as Ftrans
-from einops import rearrange
+from einops import rearrange, repeat
 
 
-from utils import interpolate_z
+from utils import interpolate_z, crop_column
 from model.architecture import (
     GlobalEncoder,
     project_global_to_roi,
@@ -21,7 +21,6 @@ class DirectDownscaling(L.LightningModule):
         resolution_input,
         resolution_target,
         column_km,
-        crop_number,
         single_channel,
         upper_channel,
         output_channel,
@@ -46,13 +45,10 @@ class DirectDownscaling(L.LightningModule):
         sigma_min = sigma_min if sigma_min is not None else 0
         sigma_max = sigma_max if sigma_max is not None else float("inf")
 
-        self.save_hyperparameters(ignore=["crop_number"])
+        self.save_hyperparameters()
 
         self.hparams.column_grid = column_grid
         self.hparams.target_grid = target_grid
-
-        self.crop_number = crop_number
-        self.factor = resolution_input / resolution_target
 
         self.enable_global_encoder = enable_global_encoder
         self.use_global_map = use_global_map_embed or use_global_map_cross_attn
@@ -82,7 +78,8 @@ class DirectDownscaling(L.LightningModule):
             include_sigma=True,
         )
 
-        example_batch = 5
+        example_batch = 2
+        example_crop = 3
         self.example_input_array = {
             "single": torch.randn(
                 example_batch, single_channel, global_grid, global_grid
@@ -97,26 +94,28 @@ class DirectDownscaling(L.LightningModule):
             "time": torch.randn(example_batch, 4),
             "noise": torch.randn(
                 example_batch,
-                crop_number,
+                example_crop,
                 output_channel,
                 len(z_target),
                 target_grid,
                 target_grid,
             ),
             "sigma": (
-                torch.randn(example_batch, crop_number, 1, 1, 1, 1) * P_std + P_mean
+                torch.randn(example_batch, example_crop, 1, 1, 1, 1) * P_std + P_mean
             )
             .exp()
             .clamp(min=sigma_min, max=sigma_max),
-            "column_top": torch.randn(example_batch, crop_number),
-            "column_left": torch.randn(example_batch, crop_number),
+            "column_top": torch.randn(example_batch, example_crop),
+            "column_left": torch.randn(example_batch, example_crop),
         }
 
     def forward(
         self, single, upper, time, noise, sigma, column_top, column_left, shaffle=False
     ):
+        crop_number = noise.shape[1]
         noise = rearrange(noise, "b n c z h w -> (b n) c z h w")
         sigma = rearrange(sigma, "b n 1 1 1 1 -> (b n) 1 1 1 1")
+        time = repeat(time, "b c -> (b n) c", n=crop_number)
 
         c_skip = self.hparams.sigma_data**2 / (sigma**2 + self.hparams.sigma_data**2)
         c_out = (
@@ -127,58 +126,41 @@ class DirectDownscaling(L.LightningModule):
         c_in = 1 / (self.hparams.sigma_data**2 + sigma**2).sqrt()
         c_noise = sigma.log() / 4
 
-        time = time.repeat_interleave(self.crop_number, dim=0)
-
         if self.enable_global_encoder:
             global_token, global_map = self.global_encoder(single, upper)
 
             if global_token is not None:
-                global_token = global_token.repeat_interleave(self.crop_number, dim=0)
+                global_token = repeat(global_token, "b c -> (b n) c", n=crop_number)
             if global_map is not None:
-                global_map = global_map.repeat_interleave(self.crop_number, dim=0)
+                global_map = repeat(
+                    global_map, "b c z h w -> (b n) c z h w", n=crop_number
+                )
 
         else:
             global_token = None
             global_map = None
 
-        column_single = []
-        column_upper = []
-        for b in range(single.shape[0]):
-            for n in range(self.crop_number):
-                column_single.append(
-                    Ftrans.crop(
-                        single[b],
-                        int(column_top[b, n]),
-                        int(column_left[b, n]),
-                        self.hparams.column_grid,
-                        self.hparams.column_grid,
-                    )
-                )
-                column_upper.append(
-                    Ftrans.crop(
-                        upper[b],
-                        int(column_top[b, n]),
-                        int(column_left[b, n]),
-                        self.hparams.column_grid,
-                        self.hparams.column_grid,
-                    )
-                )
+        column_single = crop_column(
+            single,
+            column_top,
+            column_left,
+            (self.hparams.column_grid, self.hparams.column_grid),
+            output_shape=(self.hparams.target_grid, self.hparams.target_grid),
+            mode="nearest",
+            align_corners=True,
+        )
+        column_single = rearrange(column_single, "b n c h w -> (b n) c h w")
 
-        column_single = F.interpolate(
-            torch.stack(column_single),
-            size=(self.hparams.target_grid, self.hparams.target_grid),
+        column_upper = crop_column(
+            upper,
+            column_top,
+            column_left,
+            (self.hparams.column_grid, self.hparams.column_grid),
+            output_shape=(self.hparams.target_grid, self.hparams.target_grid),
+            mode="nearest",
+            align_corners=True,
         )
-
-        column_upper = rearrange(torch.stack(column_upper), "b c z h w -> b (c z) h w")
-        column_upper = F.interpolate(
-            column_upper,
-            size=(self.hparams.target_grid, self.hparams.target_grid),
-            mode="bilinear",
-            align_corners=False,
-        )
-        column_upper = rearrange(
-            column_upper, "b (c z) h w -> b c z h w", c=self.hparams.upper_channel
-        )
+        column_upper = rearrange(column_upper, "b n c z h w -> (b n) c z h w")
 
         column_upper_all = interpolate_z(
             column_upper, self.hparams.z_input, self.hparams.z_target
@@ -207,6 +189,7 @@ class DirectDownscaling(L.LightningModule):
 
         else:
             global_map_hr = None
+
         if shaffle:
             indices = torch.randperm(input_upper.size(0))
         else:
@@ -230,13 +213,13 @@ class DirectDownscaling(L.LightningModule):
         )
 
         output = c_skip * noise + c_out * F_x
-        output = rearrange(output, "(b n) c z h w -> b n c z h w", n=self.crop_number)
+        output = rearrange(output, "(b n) c z h w -> b n c z h w", n=crop_number)
 
         return output
 
     def general_step(self, single, upper, time, target, column_top, column_left):
         rnd_normal = torch.randn(
-            [target.shape[0], self.crop_number, 1, 1, 1, 1], device=target.device
+            [target.shape[0], column_top.shape[1], 1, 1, 1, 1], device=target.device
         )
         sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
