@@ -5,7 +5,6 @@ from lightning import Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
-import wandb
 
 from dataset import DataManager
 from model import DirectDownscaling
@@ -35,7 +34,6 @@ def main(cfg) -> None:
         resolution_input=cfg.dataset.res.resolution_input,
         resolution_target=cfg.dataset.res.resolution_target,
         column_km=cfg.dataset.res.column_km,
-        crop_number=cfg.dataset.res.crop_number,
         **cfg.model.architecture,
         single_channel=len(cfg.dataset.var.input_single)
         + len(cfg.dataset.var.input_static),
@@ -66,7 +64,6 @@ def main(cfg) -> None:
     gpu_count = torch.cuda.device_count()
     strategy = "ddp" if gpu_count > 1 else "auto"
     trainer = Trainer(
-        max_epochs=10,
         logger=logger,
         callbacks=callbacks,
         accelerator="gpu",
