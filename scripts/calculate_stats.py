@@ -5,15 +5,16 @@ import h5py as h5
 import numpy as np
 import json
 import torch
-import torch.nn.functional as F
+from torchvision.transforms.v2 import Resize
 
 
 variables_constant = ["terrain", "latitude", "longitude"]
 variables_single = ["sst", "psfc", "t2m", "q2m", "u10", "v10", "olr", "sw"]
-variables_upper = ["z", "u", "v", "w", "t", "qv", "qc", "qr", "qi", "qs", "qg"]
+variables_upper = ["z", "u", "v", "w", "t", "qv", "qi", "qs", "qg", "qc", "qr"]
+variables_cloud = ["qi", "qs", "qg", "qc", "qr"]
 
 
-def main(resolution, shape, input_dir=None, output_dir=None):
+def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-6):
     env = dotenv_values(".env")
 
     dir = Path(input_dir or env.get("INPUT_DIR"))
@@ -21,82 +22,111 @@ def main(resolution, shape, input_dir=None, output_dir=None):
     results = {}
 
     for variable in variables_constant:
-        with h5.File(files[0], "r") as f:
-            var = _to_4d(np.array(f[variable][:]))
-            var = F.interpolate(var, size=shape, mode="bilinear")
+        print(variable)
 
-            mean = torch.mean(var)
-            std = torch.std(var)
-            results[variable] = {"mean": float(mean), "std": float(std)}
+        with h5.File(files[0], "r") as f:
+            var = np.array(f[variable][:])
+            var[var < 0] = 0
+            var = _to_3d(var)
+
+            if variable in ["longitude", "latitude"]:
+                resize = Resize(shape, antialias=False)
+            else:
+                resize = Resize(shape)
+            var = resize(var)
+
+            results[variable] = {
+                "scaling": "minmax",
+                "mean": float(torch.mean(var)),
+                "std": float(torch.std(var)),
+                "min": float(torch.min(var)),
+                "max": float(torch.max(var)),
+            }
 
     for variable in variables_single:
-        sum_all = 0.0
-        sumsq_all = 0.0
-        count_all = 0.0
+        print(variable)
 
+        vars = []
         for file in files:
             with h5.File(file, "r") as f:
-                var = _to_4d(np.array(f[variable[:]]))
-                var = F.interpolate(var, size=shape, mode="bilinear")
+                var = np.array(f[variable][:])
+                if variable not in ["u10", "v10"]:
+                    var[var < 0] = 0
+                var = _to_3d(var)
+                var = Resize(shape)(var)
 
-                if variable == "sst":
-                    mask = (var > 0).float()
-                    den = F.interpolate(mask, size=shape, mode="bilinear").clamp_min(
-                        1e-6
-                    )
-                    var = var / den
-                    var[var <= 0.0] = float("nan")
+                vars.append(var)
 
-                mask = torch.isfinite(var)
-                var = var[mask]
+        vars = torch.concatenate(vars, axis=0)
 
-                sum_all += torch.sum(var)
-                sumsq_all += torch.sum(var**2)
-                count_all += var.numel()
+        results[variable] = {
+            "scaling": "minmax",
+            "mean": float(torch.mean(vars)),
+            "std": float(torch.std(vars)),
+            "min": float(torch.min(vars)),
+            "max": float(torch.max(vars)),
+        }
 
-        mean = sum_all / count_all
-        std = torch.sqrt(sumsq_all / count_all - mean**2)
-        results[variable] = {"mean": float(mean), "std": float(std)}
-
+    pressure = h5.File(files[0], "r")["pressure"][:]
     for variable in variables_upper:
-        pressure = h5.File(files[0], "r")["pressure"][:]
-        sum_all = torch.zeros(len(pressure))
-        sumsq_all = torch.zeros(len(pressure))
-        count_all = torch.zeros(len(pressure))
 
-        for file in files:
-            with h5.File(file, "r") as f:
-                var = torch.from_numpy(np.array(f[variable]))
-                var = F.interpolate(var, size=shape, mode="bilinear")
+        for k, p in enumerate(pressure):
+            print(f"{variable}{int(p)}")
+            vars = []
 
-                mask = torch.isfinite(var)
-                var = torch.where(mask, var, float("nan"))
+            for file in files:
+                with h5.File(file, "r") as f:
+                    var = np.array(
+                        f[variable][
+                            :,
+                            k,
+                        ]
+                    )
+                    if variable not in ["u", "v", "w"]:
+                        var[var < 0] = 0
+                    if variable in variables_cloud:
+                        var[var < cloud_threshold] = 0
+                    var = _to_3d(var)
+                    var = Resize(shape)(var)
 
-                sum_all += torch.nansum(var, (0, -1, -2))
-                sumsq_all += torch.nansum(var**2, (0, -1, -2))
-                count_all += mask.sum()
+                    vars.append(var)
 
-        mean = sum_all / count_all
-        std = torch.sqrt(sumsq_all / count_all - mean**2)
-        for i, p in enumerate(pressure):
-            results[f"{variable}{int(p)}"] = {
-                "mean": float(mean[i]),
-                "std": float(std[i]),
+            vars = torch.concatenate(vars, axis=0)
+
+            stats = {
+                "scaling": "minmax",
+                "mean": float(torch.mean(vars)),
+                "std": float(torch.std(vars)),
+                "min": float(torch.min(vars)),
+                "max": float(torch.max(vars)),
             }
+
+            if variable in variables_cloud:
+                pr10 = torch.quantile(vars[vars > 0], 0.1)
+                log1 = torch.log10(vars / pr10 + 1)
+                pr10_1 = torch.quantile(log1[log1 > 0], 0.1)
+                log2 = torch.log10(vars / pr10_1 + 1)
+
+                stats["pr10"] = float(pr10)
+                stats["min_log1"] = float(torch.min(log1))
+                stats["max_log1"] = float(torch.max(log1))
+                stats["pr10_log1"] = float(pr10_1)
+                stats["min_log2"] = float(torch.min(log2))
+                stats["max_log2"] = float(torch.max(log2))
+
+            results[f"{variable}{int(p)}"] = stats
 
     output_file = Path(output_dir or env.get("STATS_DIR"), f"stats_{resolution}km.json")
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2)
 
 
-def _to_4d(x):
+def _to_3d(x):
     t = torch.from_numpy(x)
-    if t.ndim == 4:  # B, Z, H, W
+    if t.ndim == 3:  # B, H, W
         return t
-    elif t.ndim == 3:  # B, H, W
-        t = t.unsqueeze(1)
     elif t.ndim == 2:  # H, W
-        t = t.unsqueeze(0).unsqueeze(0)
+        t = t.unsqueeze(0)
 
     return t
 
@@ -109,6 +139,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--input_dir", default=None)
     parser.add_argument("--output_dir", default=None)
+    parser.add_argument("--cloud_threshold", default=1e-6)
     args = parser.parse_args()
 
     main(
@@ -116,4 +147,5 @@ if __name__ == "__main__":
         shape=tuple(args.shape),
         input_dir=args.input_dir,
         output_dir=args.output_dir,
+        cloud_threshold=args.cloud_threshold,
     )
