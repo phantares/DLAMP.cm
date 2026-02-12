@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from einops import rearrange
 
 from . import ResBlock, MLP, FiLM, CrossAttention
-from utils import calculate_factor, crop_center
 
 
 class Unet(nn.Module):
