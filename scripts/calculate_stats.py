@@ -84,7 +84,7 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
         }
 
     with h5.File(files[0], "r") as f:
-        pressure = f["pressure"]
+        pressure = f["pressure"][:]
 
     for variable in variables_upper:
 
