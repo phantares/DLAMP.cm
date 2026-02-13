@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torchvision.transforms.v2 import CenterCrop, Compose, Resize
 
-from utils import scale_z, encode_time
+from utils import encode_time, ScalerPipe
 
 
 class DataDataset(Dataset):
@@ -75,14 +75,14 @@ class DataDataset(Dataset):
 
             for variable in self.single:
                 data = np.array(f[variable][t,])
-                data = scale_z(self.stats, data, variable)
+                data = ScalerPipe(self.stats.get(variable)).transform(data)
                 data_single.append(data)
 
             data_single = self._preprocess(data_single, self.transform_input)
 
             for variable in self.static:
                 data = np.array(f[variable])
-                data = scale_z(self.stats, data, variable)
+                data = ScalerPipe(self.stats.get(variable)).transform(data)
                 data = data[np.newaxis, ...]
 
                 if variable in ["longitude", "latitude"]:
@@ -97,10 +97,10 @@ class DataDataset(Dataset):
                 data = data[z_up,]
 
                 for k, z in enumerate(self.z_input):
-                    scaled_data = scale_z(
-                        self.stats,
-                        data[k,],
-                        f"{variable}{z}",
+                    scaled_data = ScalerPipe(
+                        self.stats.get(f"{variable}{z}")
+                    ).transform(
+                        data[k,]
                     )
                     data[k,] = scaled_data
 
@@ -134,10 +134,10 @@ class DataDataset(Dataset):
                     ]
 
                     for k, z in enumerate(self.z_target):
-                        scaled_data = scale_z(
-                            self.stats,
-                            data[k,],
-                            f"{variable}{z}",
+                        scaled_data = ScalerPipe(
+                            self.stats.get(f"{variable}{z}")
+                        ).transform(
+                            data[k,]
                         )
                         data[k,] = scaled_data
 

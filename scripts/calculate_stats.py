@@ -35,13 +35,21 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
                 resize = Resize(shape)
             var = resize(var)
 
-            results[variable] = {
-                "scaling": "minmax",
-                "mean": float(torch.mean(var)),
-                "std": float(torch.std(var)),
-                "min": float(torch.min(var)),
-                "max": float(torch.max(var)),
-            }
+        results[variable] = {
+            "pipeline": [
+                {
+                    "type": "minmax",
+                    "params": {
+                        "min": float(torch.min(var)),
+                        "max": float(torch.max(var)),
+                    },
+                    "metadata": {
+                        "mean": float(torch.mean(var)),
+                        "std": float(torch.std(var)),
+                    },
+                },
+            ],
+        }
 
     for variable in variables_single:
         print(variable)
@@ -60,14 +68,24 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
         vars = torch.concatenate(vars, axis=0)
 
         results[variable] = {
-            "scaling": "minmax",
-            "mean": float(torch.mean(vars)),
-            "std": float(torch.std(vars)),
-            "min": float(torch.min(vars)),
-            "max": float(torch.max(vars)),
+            "pipeline": [
+                {
+                    "type": "minmax",
+                    "params": {
+                        "min": float(torch.min(vars)),
+                        "max": float(torch.max(vars)),
+                    },
+                    "metadata": {
+                        "mean": float(torch.mean(vars)),
+                        "std": float(torch.std(vars)),
+                    },
+                },
+            ],
         }
 
-    pressure = h5.File(files[0], "r")["pressure"][:]
+    with h5.File(files[0], "r") as f:
+        pressure = f["pressure"][:]
+
     for variable in variables_upper:
 
         for k, p in enumerate(pressure):
@@ -94,25 +112,63 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
             vars = torch.concatenate(vars, axis=0)
 
             stats = {
-                "scaling": "minmax",
-                "mean": float(torch.mean(vars)),
-                "std": float(torch.std(vars)),
-                "min": float(torch.min(vars)),
-                "max": float(torch.max(vars)),
+                "pipeline": [
+                    {
+                        "type": "minmax",
+                        "params": {
+                            "min": float(torch.min(vars)),
+                            "max": float(torch.max(vars)),
+                        },
+                        "metadata": {
+                            "mean": float(torch.mean(vars)),
+                            "std": float(torch.std(vars)),
+                        },
+                    },
+                ],
             }
 
             if variable in variables_cloud:
-                pr10 = torch.quantile(vars[vars > 0], 0.1)
-                log1 = torch.log10(vars / pr10 + 1)
-                pr10_1 = torch.quantile(log1[log1 > 0], 0.1)
-                log2 = torch.log10(vars / pr10_1 + 1)
+                if torch.any(vars > 0):
+                    pr10 = torch.quantile(vars[vars > 0], 0.1)
+                    log1 = torch.log10(vars / pr10 + 1)
+                    pr10_1 = torch.quantile(log1[log1 > 0], 0.1)
+                    log2 = torch.log10(vars / pr10_1 + 1)
 
-                stats["pr10"] = float(pr10)
-                stats["min_log1"] = float(torch.min(log1))
-                stats["max_log1"] = float(torch.max(log1))
-                stats["pr10_log1"] = float(pr10_1)
-                stats["min_log2"] = float(torch.min(log2))
-                stats["max_log2"] = float(torch.max(log2))
+                    stats = {
+                        "pipeline": [
+                            {
+                                "type": "log",
+                                "params": {"ref": float(pr10)},
+                                "metadata": {
+                                    "mean": float(torch.mean(vars)),
+                                    "std": float(torch.std(vars)),
+                                    "min": float(torch.min(vars)),
+                                    "max": float(torch.max(vars)),
+                                },
+                            },
+                            {
+                                "type": "log",
+                                "params": {"ref": float(pr10_1)},
+                                "metadata": {
+                                    "mean": float(torch.mean(log1)),
+                                    "std": float(torch.std(log1)),
+                                    "min": float(torch.min(log1)),
+                                    "max": float(torch.max(log1)),
+                                },
+                            },
+                            {
+                                "type": "minmax",
+                                "params": {
+                                    "min": float(torch.min(log2)),
+                                    "max": float(torch.max(log2)),
+                                },
+                                "metadata": {
+                                    "mean": float(torch.mean(log2)),
+                                    "std": float(torch.std(log2)),
+                                },
+                            },
+                        ],
+                    }
 
             results[f"{variable}{int(p)}"] = stats
 
