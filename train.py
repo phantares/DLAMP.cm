@@ -2,12 +2,14 @@ from pathlib import Path
 from dotenv import dotenv_values
 import hydra
 from lightning import Trainer
-from lightning.pytorch.loggers import WandbLogger
+
+# from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
 
 from dataset import DataManager
 from model import DirectDownscaling
+from callbacks import VisualizerCallback
 
 
 @hydra.main(version_base=None, config_path="config", config_name="train")
@@ -45,15 +47,15 @@ def main(cfg) -> None:
     )
     model = model.to(dtype)
 
-    logger = WandbLogger(
-        project="DLAMP.cm",
-        name=experiment_name,
-        save_dir=".",
-        log_model=False,
-        mode=cfg.logger.mode,
+    logger = hydra.utils.instantiate(cfg.logger)
+
+    visualizer = VisualizerCallback(
+        z_levels=cfg.dataset.var.z_target,
+        target_var=cfg.dataset.var.target,
+        log_every_n_epochs=1,
     )
 
-    callbacks = ModelCheckpoint(
+    model_checkpoint = ModelCheckpoint(
         dirpath=Path("checkpoints", experiment_name),
         filename="{epoch}-{step}-{total_val_epoch:.6f}",
         save_top_k=3,
@@ -65,7 +67,7 @@ def main(cfg) -> None:
     strategy = "ddp" if gpu_count > 1 else "auto"
     trainer = Trainer(
         logger=logger,
-        callbacks=callbacks,
+        callbacks=[model_checkpoint, visualizer],
         accelerator="gpu",
         strategy=strategy,
         devices=gpu_count,
