@@ -217,12 +217,7 @@ class DirectDownscaling(L.LightningModule):
 
         return output
 
-    def general_step(self, single, upper, time, target, column_top, column_left):
-        rnd_normal = torch.randn(
-            [target.shape[0], column_top.shape[1], 1, 1, 1, 1], device=target.device
-        )
-        sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
-        sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
+    def general_step(self, single, upper, time, target, sigma, column_top, column_left, shaffle=False):
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
         ) ** 2
@@ -236,7 +231,7 @@ class DirectDownscaling(L.LightningModule):
             sigma=sigma,
             column_top=column_top,
             column_left=column_left,
-            shaffle=True,
+            shaffle=shaffle,
         )
 
         loss_var = nn.MSELoss(reduction="none")(output, target).mean(dim=(0, 1, -1, -2))
@@ -249,8 +244,15 @@ class DirectDownscaling(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         single, upper, time, target, column_top, column_left = batch
+
+        rnd_normal = torch.randn(
+            [target.shape[0], column_top.shape[1], 1, 1, 1, 1], device=target.device
+        )
+        sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
+        sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
+
         loss, loss_var = self.general_step(
-            single, upper, time, target, column_top, column_left
+            single, upper, time, target, sigma, column_top, column_left, shaffle=True
         )
 
         self.log(
@@ -269,8 +271,16 @@ class DirectDownscaling(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         single, upper, time, target, column_top, column_left = batch
+
+        v_gen = torch.Generator(device=target.device).manual_seed(42 + batch_idx)
+        rnd_normal = torch.randn(
+            [target.shape[0], column_top.shape[1], 1, 1, 1, 1], device=target.device, generator=v_gen
+        )
+        sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
+        sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
+
         loss, loss_var = self.general_step(
-            single, upper, time, target, column_top, column_left
+            single, upper, time, target, sigma, column_top, column_left
         )
 
         self.log(

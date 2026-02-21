@@ -12,7 +12,12 @@ experiment:
 dtype: float64
 
 logger:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: "DLAMP.cm"
+  name: ${experiment.name}
   mode: offline
+  save_dir: .
+  log_model: False
 
 hydra:
   job:
