@@ -3,7 +3,6 @@ from dotenv import dotenv_values
 import hydra
 from lightning import Trainer
 
-# from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
 
@@ -50,6 +49,7 @@ def main(cfg) -> None:
     logger = hydra.utils.instantiate(cfg.logger)
 
     visualizer = VisualizerCallback(
+        stats_file=cfg.dataset.res.stats_file,
         z_levels=cfg.dataset.var.z_target,
         target_var=cfg.dataset.var.target,
         log_every_n_epochs=1,
