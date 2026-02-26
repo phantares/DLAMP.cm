@@ -129,10 +129,10 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
 
             if variable in variables_cloud:
                 if torch.any(vars > 0):
-                    pr10 = torch.quantile(vars[vars > 0], 0.1)
+                    pr10 = np.percentile(vars[vars > 0].cpu().numpy(), 10).item()
                     log1 = torch.log10(vars / pr10 + 1)
-                    pr10_1 = torch.quantile(log1[log1 > 0], 0.1)
-                    log2 = torch.log10(vars / pr10_1 + 1)
+                    pr10_1 = np.percentile(log1[log1 > 0].cpu().numpy(), 10).item()
+                    log2 = torch.log10(log1 / pr10_1 + 1)
 
                     stats = {
                         "pipeline": [
