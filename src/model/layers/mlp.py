@@ -28,7 +28,6 @@ class MLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.linear1(x)
         x = self.activation(x)
-        x = self.drop(x)
         x = self.linear2(x)
         x = self.drop(x)
 

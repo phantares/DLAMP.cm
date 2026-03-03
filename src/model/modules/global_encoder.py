@@ -2,7 +2,12 @@ import torch
 import torch.nn as nn
 from einops import rearrange, repeat
 
-from . import PositionEncoder, SinusoidalPositionEncoder, ConvNeXtLayer, MLP
+from model.layers import (
+    PositionEncoder,
+    SinusoidalPositionEncoder,
+    ConvNeXtLayer,
+    MLP,
+)
 
 
 class GlobalEncoder(nn.Module):
