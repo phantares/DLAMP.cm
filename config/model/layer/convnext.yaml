@@ -1,0 +1,4 @@
+_target_: model.layers.ConvNeXtBlock
+kernel: [7, 7, 7]
+layer_scale_init: 1e-6
+drop_path: 0.0

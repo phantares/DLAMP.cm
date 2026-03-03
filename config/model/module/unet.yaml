@@ -1,0 +1,9 @@
+_target_: model.modules.Unet
+base_channel: 128
+use_film: False
+use_token: False
+token_channel: 768
+token_emb_channel: 512
+time_emb_channel: 128
+include_sigma: False
+sigma_emb_channel: 32
