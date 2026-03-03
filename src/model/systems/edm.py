@@ -1,22 +1,18 @@
 import lightning as L
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torchvision.transforms.v2 import functional as Ftrans
 from einops import rearrange, repeat
-
+from hydra.utils import instantiate
+from omegaconf import OmegaConf
 
 from utils import interpolate_z, crop_column
-from model.architecture import (
-    GlobalEncoder,
-    project_global_to_roi,
-    Unet,
-)
 
 
-class DirectDownscaling(L.LightningModule):
+class EDM(L.LightningModule):
     def __init__(
         self,
+        network_cfg,
+        layer_cfg,
         global_grid,
         resolution_input,
         resolution_target,
@@ -32,12 +28,11 @@ class DirectDownscaling(L.LightningModule):
         sigma_data,
         sigma_min=None,
         sigma_max=None,
-        enable_global_encoder=True,
-        use_global_token=True,
-        use_global_map_embed=True,
-        use_global_map_cross_attn=True,
     ):
         super().__init__()
+
+        network_cfg = OmegaConf.to_container(network_cfg, resolve=True)
+        layer_cfg = OmegaConf.to_container(layer_cfg, resolve=True)
 
         column_grid = column_km // resolution_input
         target_grid = column_km // resolution_target
@@ -45,36 +40,19 @@ class DirectDownscaling(L.LightningModule):
         sigma_min = sigma_min if sigma_min is not None else 0
         sigma_max = sigma_max if sigma_max is not None else float("inf")
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["column_km"])
 
         self.hparams.column_grid = column_grid
         self.hparams.target_grid = target_grid
 
-        self.enable_global_encoder = enable_global_encoder
-        self.use_global_map = use_global_map_embed or use_global_map_cross_attn
-
-        if enable_global_encoder and (use_global_token or self.use_global_map):
-            self.global_encoder = GlobalEncoder(
-                resolution=resolution_input,
-                single_channel=single_channel,
-                upper_channel=upper_channel,
-                use_map=self.use_global_map,
-                use_token=use_global_token,
-            )
-        else:
-            self.enable_global_encoder = False
-            self.use_global_map = False
-
-        self.unet = Unet(
+        unet_factory = instantiate(network_cfg, _partial_=True)
+        self.unet = unet_factory(
+            layer_cfg=layer_cfg,
             target_horizontal_shape=(target_grid, target_grid),
-            input_resolution=resolution_input,
             target_resolution=resolution_target,
             single_channel=single_channel,
             upper_channel=upper_channel + output_channel,
             out_channel=output_channel,
-            use_token=enable_global_encoder and use_global_token,
-            use_map_embed=enable_global_encoder and use_global_map_embed,
-            use_map_cross_attn=enable_global_encoder and use_global_map_cross_attn,
             include_sigma=True,
         )
 
@@ -126,20 +104,6 @@ class DirectDownscaling(L.LightningModule):
         c_in = 1 / (self.hparams.sigma_data**2 + sigma**2).sqrt()
         c_noise = sigma.log() / 4
 
-        if self.enable_global_encoder:
-            global_token, global_map = self.global_encoder(single, upper)
-
-            if global_token is not None:
-                global_token = repeat(global_token, "b c -> (b n) c", n=crop_number)
-            if global_map is not None:
-                global_map = repeat(
-                    global_map, "b c z h w -> (b n) c z h w", n=crop_number
-                )
-
-        else:
-            global_token = None
-            global_map = None
-
         column_single = crop_column(
             single,
             column_top,
@@ -167,29 +131,6 @@ class DirectDownscaling(L.LightningModule):
         )
         input_upper = torch.cat([column_upper_all, noise * c_in], dim=1)
 
-        column_top = rearrange(column_top, "b n -> (b n)")
-        column_left = rearrange(column_left, "b n -> (b n)")
-
-        if global_map is not None and self.use_global_map:
-            global_map = project_global_to_roi(
-                global_map,
-                column_left,
-                column_top,
-                output_size=self.hparams.target_grid,
-                window_size=self.hparams.column_grid,
-                global_size=self.hparams.global_grid,
-            )
-            global_map_upper = interpolate_z(
-                global_map[:, :, 1:, :, :], self.hparams.z_input, self.hparams.z_target
-            )
-
-            global_map_hr = torch.cat(
-                [global_map[:, :, 0:1, :, :], global_map_upper], dim=-3
-            )
-
-        else:
-            global_map_hr = None
-
         if shaffle:
             indices = torch.randperm(input_upper.size(0))
         else:
@@ -198,17 +139,7 @@ class DirectDownscaling(L.LightningModule):
         F_x = self.unet(
             input_surface=column_single[indices, ...],
             input_upper=input_upper[indices, ...],
-            position=torch.stack(
-                [column_top[indices, ...], column_left[indices, ...]],
-                dim=1,
-            ),
             time=time[indices, ...],
-            global_token=(
-                global_token[indices, ...] if global_token is not None else None
-            ),
-            global_map=(
-                global_map_hr[indices, ...] if global_map_hr is not None else None
-            ),
             sigma=c_noise[indices, ...].flatten(1),
         )
 
@@ -217,7 +148,9 @@ class DirectDownscaling(L.LightningModule):
 
         return output
 
-    def general_step(self, single, upper, time, target, sigma, column_top, column_left, shaffle=False):
+    def general_step(
+        self, single, upper, time, target, sigma, column_top, column_left, shaffle=False
+    ):
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
         ) ** 2
@@ -246,7 +179,7 @@ class DirectDownscaling(L.LightningModule):
         single, upper, time, target, column_top, column_left = batch
 
         rnd_normal = torch.randn(
-            [target.shape[0], column_top.shape[1], 1, 1, 1, 1], device=target.device
+            [target.shape[0], target.shape[1], 1, 1, 1, 1], device=target.device
         )
         sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
@@ -274,7 +207,9 @@ class DirectDownscaling(L.LightningModule):
 
         v_gen = torch.Generator(device=target.device).manual_seed(42 + batch_idx)
         rnd_normal = torch.randn(
-            [target.shape[0], column_top.shape[1], 1, 1, 1, 1], device=target.device, generator=v_gen
+            [target.shape[0], target.shape[1], 1, 1, 1, 1],
+            device=target.device,
+            generator=v_gen,
         )
         sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)

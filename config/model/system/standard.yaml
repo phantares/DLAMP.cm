@@ -1,0 +1,4 @@
+_target_: model.systems.Standard
+
+defaults:
+  - _common_params

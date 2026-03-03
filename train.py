@@ -2,12 +2,10 @@ from pathlib import Path
 from dotenv import dotenv_values
 import hydra
 from lightning import Trainer
-
 from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
 
 from dataset import DataManager
-from model import DirectDownscaling
 from callbacks import VisualizerCallback
 
 
@@ -30,19 +28,12 @@ def main(cfg) -> None:
         **cfg.dataset,
     )
 
-    model = DirectDownscaling(
-        global_grid=cfg.dataset.res.global_grid,
-        resolution_input=cfg.dataset.res.resolution_input,
-        resolution_target=cfg.dataset.res.resolution_target,
-        column_km=cfg.dataset.res.column_km,
-        **cfg.model.architecture,
+    model = hydra.utils.instantiate(
+        cfg.model.system,
         single_channel=len(cfg.dataset.var.input_single)
         + len(cfg.dataset.var.input_static),
         upper_channel=len(cfg.dataset.var.input_upper),
         output_channel=len(cfg.dataset.var.target),
-        z_input=cfg.dataset.var.z_input,
-        z_target=cfg.dataset.var.z_target,
-        target_var=cfg.dataset.var.target,
     )
     model = model.to(dtype)
 

@@ -1,0 +1,4 @@
+_target_: model.layers.ResNetBlock
+dilation: 1
+groups: 16
+dropout: 0.05

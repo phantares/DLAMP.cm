@@ -3,7 +3,7 @@ import torch.nn as nn
 from timm.layers import DropPath
 from einops import rearrange
 
-from . import MLP
+from . import MLP, FiLM
 
 
 class ConvNeXtLayer(nn.Module):
@@ -30,7 +30,12 @@ class ConvNeXtLayer(nn.Module):
 
 class ConvNeXtBlock(nn.Module):
     def __init__(
-        self, dim: int, kernel=(1, 7, 7), layer_scale_init=1e-6, drop_path=0.0
+        self,
+        dim: int,
+        kernel: list[int] = [7, 7, 7],
+        layer_scale_init=1e-6,
+        drop_path=0.0,
+        film_channel=0,
     ):
         super().__init__()
 
@@ -44,17 +49,28 @@ class ConvNeXtBlock(nn.Module):
         )
         self.drop = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
-    def forward(self, x: torch.Tensor):
-        input = x
+        if film_channel > 0:
+            self.film = FiLM(film_channel, dim * 4)
+        else:
+            self.film = None
+
+    def forward(self, x: torch.Tensor, film_base=None):
+        shortcut = x
         x = self.dwconv(x)
 
         x = rearrange(x, "b c z h w -> b z h w c")
         x = self.norm(x)
-        x = self.mlp(x)
+
+        x = self.mlp.linear1(x)
+        if self.film is not None and film_base is not None:
+            x = self.film(x, film_base)
+        x = self.mlp.activation(x)
+        x = self.mlp.linear2(x)
+
         if self.gamma is not None:
             x = x * self.gamma
         x = rearrange(x, "b z h w c -> b c z h w")
 
-        x = input + self.drop(x)
+        x = shortcut + self.drop(x)
 
         return x
