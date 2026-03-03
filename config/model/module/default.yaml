@@ -1,0 +1,16 @@
+use_global: False 
+
+global_encoder:
+  _target_: model.modules.GlobalEncoder
+  resolution: ${dataset.res.resolution_input}
+  token_channel: 768
+
+unet:
+  _target_: model.modules.UNet
+  base_channel: 128
+  use_film: False
+  use_token: False
+  token_channel: 768
+  token_emb_channel: 512
+  time_emb_channel: 128
+  sigma_emb_channel: 32

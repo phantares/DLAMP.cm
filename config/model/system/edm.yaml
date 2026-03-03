@@ -1,4 +1,4 @@
-_target_: model.systems.EDM
+_target_: model.systems.EDMDownscaling
 _recursive_: False
 P_mean: 0
 P_std: 1

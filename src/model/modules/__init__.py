@@ -1,2 +1,2 @@
-from .unet import Unet
+from .unet import UNet
 from .global_encoder import GlobalEncoder
