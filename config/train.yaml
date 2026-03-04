@@ -3,9 +3,9 @@ defaults:
   - dataset/split: rwrf_2022
   - dataset/var : cm
   - dataset/res: 4km
-  - model/layer: convnext 
-  - model/module: unet
-  - model/system: edm 
+  - model/layer: resnet
+  - model/module: default
+  - model/system: standard 
   - _self_
 
 experiment:
