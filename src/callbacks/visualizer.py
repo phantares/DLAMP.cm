@@ -25,27 +25,7 @@ class VisualizerCallback(L.Callback):
             single, upper, time, target, column_top, column_left = batch
 
             with torch.no_grad():
-                v_gen = torch.Generator(device=pl_module.device).manual_seed(42)
-                sigma_val = torch.exp(torch.tensor(pl_module.hparams.P_mean)).to(
-                    pl_module.device
-                )
-                sigma = sigma_val.view(1, 1, 1, 1, 1, 1)
-                noise = (
-                    torch.randn(
-                        target[0:1, 0:1].shape, generator=v_gen, device=pl_module.device
-                    )
-                    * sigma
-                )
-
-                pred = pl_module(
-                    single=single[0:1],
-                    upper=upper[0:1],
-                    time=time[0:1],
-                    noise=target[0:1, 0:1] + noise,
-                    sigma=sigma,
-                    column_top=column_top[0:1, 0:1],
-                    column_left=column_left[0:1, 0:1],
-                )
+                pred = pl_module.generate_sample(batch)
 
                 target = target[0, 0].cpu()
                 pred = pred[0, 0].cpu()

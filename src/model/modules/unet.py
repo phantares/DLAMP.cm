@@ -5,12 +5,11 @@ from hydra.utils import instantiate
 from model.layers import MLP
 
 
-class Unet(nn.Module):
+class UNet(nn.Module):
     def __init__(
         self,
         layer_cfg,
         target_horizontal_shape,
-        target_resolution,
         single_channel,
         upper_channel,
         out_channel,

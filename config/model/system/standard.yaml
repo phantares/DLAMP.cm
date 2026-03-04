@@ -1,4 +1,5 @@
-_target_: model.systems.Standard
+_target_: model.systems.StandardDownscaling
+_recursive_: False
 
 defaults:
   - _common_params

@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 from utils import interpolate_z, crop_column
 
 
-class EDM(L.LightningModule):
+class EDMDownscaling(L.LightningModule):
     def __init__(
         self,
         network_cfg,
@@ -42,17 +42,25 @@ class EDM(L.LightningModule):
 
         self.save_hyperparameters(ignore=["column_km"])
 
-        self.hparams.column_grid = column_grid
-        self.hparams.target_grid = target_grid
+        self.column_grid = column_grid
+        self.target_grid = target_grid
 
-        unet_factory = instantiate(network_cfg, _partial_=True)
+        self.use_global = network_cfg["use_global"]
+        if self.use_global:
+            self.global_encoder = instantiate(
+                network_cfg["global_encoder"],
+                single_channel=single_channel,
+                upper_channel=upper_channel,
+            )
+
+        unet_factory = instantiate(network_cfg["unet"], _partial_=True)
         self.unet = unet_factory(
             layer_cfg=layer_cfg,
             target_horizontal_shape=(target_grid, target_grid),
-            target_resolution=resolution_target,
             single_channel=single_channel,
             upper_channel=upper_channel + output_channel,
             out_channel=output_channel,
+            use_token=self.use_global,
             include_sigma=True,
         )
 
@@ -90,7 +98,8 @@ class EDM(L.LightningModule):
     def forward(
         self, single, upper, time, noise, sigma, column_top, column_left, shaffle=False
     ):
-        crop_number = noise.shape[1]
+        crop_number = column_top.shape[1]
+
         noise = rearrange(noise, "b n c z h w -> (b n) c z h w")
         sigma = rearrange(sigma, "b n 1 1 1 1 -> (b n) 1 1 1 1")
         time = repeat(time, "b c -> (b n) c", n=crop_number)
@@ -104,12 +113,17 @@ class EDM(L.LightningModule):
         c_in = 1 / (self.hparams.sigma_data**2 + sigma**2).sqrt()
         c_noise = sigma.log() / 4
 
+        global_token = None
+        if self.use_global:
+            global_token = self.global_encoder(single, upper)
+            global_token = repeat(global_token, "b c -> (b n) c", n=crop_number)
+
         column_single = crop_column(
             single,
             column_top,
             column_left,
-            (self.hparams.column_grid, self.hparams.column_grid),
-            output_shape=(self.hparams.target_grid, self.hparams.target_grid),
+            (self.column_grid, self.column_grid),
+            output_shape=(self.target_grid, self.target_grid),
             mode="nearest",
             align_corners=True,
         )
@@ -119,8 +133,8 @@ class EDM(L.LightningModule):
             upper,
             column_top,
             column_left,
-            (self.hparams.column_grid, self.hparams.column_grid),
-            output_shape=(self.hparams.target_grid, self.hparams.target_grid),
+            (self.column_grid, self.column_grid),
+            output_shape=(self.target_grid, self.target_grid),
             mode="nearest",
             align_corners=True,
         )
@@ -140,6 +154,9 @@ class EDM(L.LightningModule):
             input_surface=column_single[indices, ...],
             input_upper=input_upper[indices, ...],
             time=time[indices, ...],
+            global_token=(
+                global_token[indices, ...] if global_token is not None else None
+            ),
             sigma=c_noise[indices, ...].flatten(1),
         )
 
@@ -242,3 +259,27 @@ class EDM(L.LightningModule):
                     on_epoch=True,
                     sync_dist=True,
                 )
+
+    def generate_sample(self, batch):
+        single, upper, time, target, column_top, column_left = batch
+
+        v_gen = torch.Generator(device=self.device).manual_seed(42)
+        sigma = (
+            torch.exp(torch.tensor(self.hparams.P_mean))
+            .to(self.device)
+            .view(1, 1, 1, 1, 1, 1)
+        )
+        noise = (
+            torch.randn(target[0:1, 0:1].shape, generator=v_gen, device=self.device)
+            * sigma
+        )
+
+        return self(
+            single=single[0:1],
+            upper=upper[0:1],
+            time=time[0:1],
+            noise=target[0:1, 0:1] + noise,
+            sigma=sigma,
+            column_top=column_top[0:1, 0:1],
+            column_left=column_left[0:1, 0:1],
+        )
