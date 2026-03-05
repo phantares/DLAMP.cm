@@ -2,6 +2,9 @@ import torch
 
 
 def interpolate_z(data, z_source, z_target):
+    if z_source == z_target:
+        return data
+
     Zs = data.size(-3)
     device = data.device
 
