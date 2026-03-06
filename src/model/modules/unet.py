@@ -62,29 +62,27 @@ class UNet(nn.Module):
         self.enc0 = nn.Conv3d(emb_channel, c1, 3, padding=1)
 
         self.enc1 = self.layer_factory(dim=c1, film_channel=film_channel)
-        self.ds1 = nn.Conv3d(c1, c2, 3, stride=(1, 2, 2), padding=1)
+        self.ds1 = nn.Conv3d(c1, c2, (1, 2, 2), stride=(1, 2, 2), padding=0)
         self.enc2 = self.layer_factory(dim=c2, film_channel=film_channel)
-        self.ds2 = nn.Conv3d(c2, c3, 3, stride=(1, 2, 2), padding=1)
+        self.ds2 = nn.Conv3d(c2, c3, (1, 2, 2), stride=(1, 2, 2), padding=0)
 
         self.mid = self.layer_factory(dim=c3, film_channel=film_channel)
 
         self.us2 = nn.ConvTranspose3d(
             c3,
             c2,
-            kernel_size=(1, 3, 3),
+            kernel_size=(1, 2, 2),
             stride=(1, 2, 2),
-            padding=(0, 1, 1),
-            output_padding=(0, 0, 0),
+            padding=0,
         )
         self.dec2_reduce = nn.Conv3d(c2 + c2, c2, kernel_size=1)
         self.dec2 = self.layer_factory(dim=c2, film_channel=film_channel)
         self.us1 = nn.ConvTranspose3d(
             c2,
             c1,
-            kernel_size=(1, 3, 3),
+            kernel_size=(1, 2, 2),
             stride=(1, 2, 2),
-            padding=(0, 1, 1),
-            output_padding=(0, 1, 1),
+            padding=0,
         )
         self.dec1_reduce = nn.Conv3d(c1 + c1, c1, kernel_size=1)
         self.dec1 = self.layer_factory(dim=c1, film_channel=film_channel)
