@@ -25,8 +25,11 @@ class DataDataset(Dataset):
         z_input,
         z_target,
         dtype=torch.float64,
+        mode="train",
     ):
         super().__init__()
+
+        self.mode = mode
 
         self.column_grid = column_km // resolution_input
         self.target_grid = column_km // resolution_target
@@ -112,8 +115,13 @@ class DataDataset(Dataset):
             tops = []
             lefts = []
             for _ in range(self.crop_number):
-                top = np.random.randint(0, H - self.column_grid + 1)
-                left = np.random.randint(0, W - self.column_grid + 1)
+                if self.mode == "test":
+                    top = 0
+                    left = 0
+
+                else:
+                    top = np.random.randint(0, H - self.column_grid + 1)
+                    left = np.random.randint(0, W - self.column_grid + 1)
 
                 tops.append(top)
                 lefts.append(left)

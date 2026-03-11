@@ -26,6 +26,11 @@ class StandardDownscaling(L.LightningModule):
     ):
         super().__init__()
 
+        if isinstance(network_cfg, dict):
+            network_cfg = OmegaConf.create(network_cfg)
+        if isinstance(layer_cfg, dict):
+            layer_cfg = OmegaConf.create(layer_cfg)
+
         network_cfg = OmegaConf.to_container(network_cfg, resolve=True)
         layer_cfg = OmegaConf.to_container(layer_cfg, resolve=True)
 
@@ -73,7 +78,10 @@ class StandardDownscaling(L.LightningModule):
             "column_left": torch.randn(example_batch, example_crop),
         }
 
-    def forward(self, single, upper, time, column_top, column_left, shaffle=False):
+        self.test_targets = []
+        self.test_outputs = []
+
+    def forward(self, single, upper, time, column_top, column_left, shuffle=False):
         crop_number = column_top.shape[1]
 
         time = repeat(time, "b c -> (b n) c", n=crop_number)
@@ -109,7 +117,7 @@ class StandardDownscaling(L.LightningModule):
             column_upper, self.hparams.z_input, self.hparams.z_target
         )
 
-        if shaffle:
+        if shuffle:
             indices = torch.randperm(input_upper.size(0))
         else:
             indices = torch.arange(input_upper.size(0), device=column_single.device)
@@ -128,7 +136,7 @@ class StandardDownscaling(L.LightningModule):
         return output
 
     def general_step(
-        self, single, upper, time, target, column_top, column_left, shaffle=False
+        self, single, upper, time, target, column_top, column_left, shuffle=False
     ):
 
         output = self(
@@ -137,13 +145,13 @@ class StandardDownscaling(L.LightningModule):
             time=time,
             column_top=column_top,
             column_left=column_left,
-            shaffle=shaffle,
+            shuffle=shuffle,
         )
 
         loss_var = nn.MSELoss(reduction="none")(output, target).mean(dim=(0, 1, -1, -2))
         loss = torch.mean(loss_var)
 
-        return loss, loss_var
+        return loss, loss_var, output
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
@@ -151,8 +159,8 @@ class StandardDownscaling(L.LightningModule):
     def training_step(self, batch, batch_idx):
         single, upper, time, target, column_top, column_left = batch
 
-        loss, loss_var = self.general_step(
-            single, upper, time, target, column_top, column_left, shaffle=True
+        loss, loss_var, _ = self.general_step(
+            single, upper, time, target, column_top, column_left, shuffle=True
         )
 
         self.log(
@@ -172,7 +180,7 @@ class StandardDownscaling(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         single, upper, time, target, column_top, column_left = batch
 
-        loss, loss_var = self.general_step(
+        loss, loss_var, _ = self.general_step(
             single, upper, time, target, column_top, column_left
         )
 
@@ -189,6 +197,28 @@ class StandardDownscaling(L.LightningModule):
         )
 
         return loss
+
+    def test_step(self, batch, batch_idx):
+        single, upper, time, target, column_top, column_left = batch
+
+        loss, loss_var, output = self.general_step(
+            single, upper, time, target, column_top, column_left
+        )
+
+        self.test_targets.append(target.cpu().numpy())
+        self.test_outputs.append(output.cpu().numpy())
+
+        self.log(
+            "total_test",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self._log_loss_var(
+            loss_var, self.hparams.target_var, self.hparams.z_target, "test"
+        )
 
     def _log_loss_var(self, loss, variable_name, level, stage):
         for z, lev in enumerate(level):
