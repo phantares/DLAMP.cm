@@ -35,6 +35,7 @@ class DataManager(L.LightningDataModule):
             )
 
             self.test_dataset = DataDataset(
+                mode="test",
                 indexes=indexer.test_index,
                 dtype=self.hparams.dtype,
                 **self.hparams.res,

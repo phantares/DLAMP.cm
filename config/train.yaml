@@ -11,7 +11,7 @@ defaults:
 experiment:
   name: test
 
-dtype: float64
+dtype: float32
 
 logger:
   _target_: lightning.pytorch.loggers.WandbLogger

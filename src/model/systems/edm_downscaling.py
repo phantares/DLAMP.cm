@@ -96,7 +96,7 @@ class EDMDownscaling(L.LightningModule):
         }
 
     def forward(
-        self, single, upper, time, noise, sigma, column_top, column_left, shaffle=False
+        self, single, upper, time, noise, sigma, column_top, column_left, shuffle=False
     ):
         crop_number = column_top.shape[1]
 
@@ -145,7 +145,7 @@ class EDMDownscaling(L.LightningModule):
         )
         input_upper = torch.cat([column_upper_all, noise * c_in], dim=1)
 
-        if shaffle:
+        if shuffle:
             indices = torch.randperm(input_upper.size(0))
         else:
             indices = torch.arange(input_upper.size(0), device=column_single.device)
@@ -166,7 +166,7 @@ class EDMDownscaling(L.LightningModule):
         return output
 
     def general_step(
-        self, single, upper, time, target, sigma, column_top, column_left, shaffle=False
+        self, single, upper, time, target, sigma, column_top, column_left, shuffle=False
     ):
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
@@ -181,7 +181,7 @@ class EDMDownscaling(L.LightningModule):
             sigma=sigma,
             column_top=column_top,
             column_left=column_left,
-            shaffle=shaffle,
+            shuffle=shuffle,
         )
 
         loss_var = nn.MSELoss(reduction="none")(output, target).mean(dim=(0, 1, -1, -2))
@@ -202,7 +202,7 @@ class EDMDownscaling(L.LightningModule):
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
 
         loss, loss_var = self.general_step(
-            single, upper, time, target, sigma, column_top, column_left, shaffle=True
+            single, upper, time, target, sigma, column_top, column_left, shuffle=True
         )
 
         self.log(
