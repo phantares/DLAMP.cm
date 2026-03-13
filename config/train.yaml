@@ -1,25 +1,19 @@
 defaults:
-  - dataset: base
+  - dataset: default
   - dataset/split: rwrf_2022
   - dataset/var : cm
   - dataset/res: 4km
   - model/layer: resnet
   - model/module: default
   - model/system: standard 
+  - callbacks: default
+  - logger: default
   - _self_
 
 experiment:
   name: test
 
 dtype: float32
-
-logger:
-  _target_: lightning.pytorch.loggers.WandbLogger
-  project: "DLAMP.cm"
-  name: ${experiment.name}
-  mode: offline
-  save_dir: .
-  log_model: False
 
 hydra:
   job:

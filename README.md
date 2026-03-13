@@ -52,12 +52,12 @@ uv run wandb login
 ## 🧠 Training
 To start training with the default configuration, run:
 ```bash
-uv run python train.py
+uv run src/train.py
 ```
 
 ### Customizing the Run
 You can override any configuration setting directly from the command line without editing the config.yaml files. Simply append the parameters you want to change using the key=value syntax:
 
 ```bash
-uv run python train.py parameter=value
+uv run src/train.py parameter=value
 ```

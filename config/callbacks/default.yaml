@@ -1,0 +1,15 @@
+model_checkpoint:
+  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  dirpath: checkpoints/${experiment.name}
+  filename: "{epoch}-{step}-{total_val_epoch:.6f}"
+  save_top_k: 3
+  monitor: total_val_epoch
+  mode: min
+  save_last: True
+
+visualizer:
+  _target_: callbacks.VisualizerCallback
+  stats_file: ${dataset.res.stats_file}
+  z_levels: ${dataset.var.z_target}
+  target_var: ${dataset.var.target}
+  log_every_n_epochs: 1
