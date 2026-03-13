@@ -56,24 +56,25 @@ class DataDataset(Dataset):
         )
         self.transform_target = Compose([CenterCrop(global_grid_hr)])
 
-        f = self._get_handles(self.indexes[0]["file"])
 
-        data_static = []
-        for variable in input_static:
-            data = torch.from_numpy(f[variable][:])
-            data = data.unsqueeze(0).to(self.dtype)
+        with h5.File(self.indexes[0]["file"], "r", swmr=True) as f:
+            data_static = []
+            for variable in input_static:
+                data = torch.from_numpy(f[variable][:])
+                data = data.unsqueeze(0).to(self.dtype)
 
-            if variable in ["longitude", "latitude"]:
-                data = self.transform_grid(data)
-            else:
-                data = self.transform_input(data)
+                if variable in ["longitude", "latitude"]:
+                    data = self.transform_grid(data)
+                else:
+                    data = self.transform_input(data)
 
-            data = self.scaler_map.get(variable, IdentityScaler()).transform(data.squeeze(0))
-            data_static.append(data)
+                data = self.scaler_map.get(variable, IdentityScaler()).transform(data.squeeze(0))
+                data_static.append(data)
+
+            pressure = f["pressure"][:]
 
         self.data_static = torch.stack(data_static)
 
-        pressure = f["pressure"][:]
         self.z_up = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_input)
         self.z_tar = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_target)
 
