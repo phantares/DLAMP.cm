@@ -1,6 +1,13 @@
 from .registry import SCALER_MAP
 
 
+class IdentityScaler:
+    def transform(self, data):
+        return data
+
+    def inverse_transform(self, data):
+        return data
+
 class ScalerPipe:
     def __init__(self, stat):
         self.scalers = []
