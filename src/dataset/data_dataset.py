@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.transforms.v2 import CenterCrop, Compose, Resize
 
-from utils import encode_time
+from utils import encode_time, IdentityScaler
 
 
 class DataDataset(Dataset):
@@ -68,7 +68,7 @@ class DataDataset(Dataset):
             else:
                 data = self.transform_input(data)
 
-            data = self.scaler_map[variable].transform(data.squeeze(0))
+            data = self.scaler_map.get(variable, IdentityScaler()).transform(data.squeeze(0))
             data_static.append(data)
 
         self.data_static = torch.stack(data_static)
@@ -96,7 +96,7 @@ class DataDataset(Dataset):
             data = torch.from_numpy(f[variable][t,])
             data = data.unsqueeze(0).to(self.dtype)
             data = self.transform_input(data)
-            data = self.scaler_map[variable].transform(data.squeeze(0))
+            data = self.scaler_map.get(variable, IdentityScaler()).transform(data.squeeze(0))
             data_single.append(data)
 
         data_single = torch.stack(data_single)
@@ -107,7 +107,7 @@ class DataDataset(Dataset):
             data = self.transform_input(data.to(self.dtype))
 
             for k, z in enumerate(self.z_input):
-                scaled_data = self.scaler_map[f"{variable}{int(z)}"].transform(data[k,])
+                scaled_data = self.scaler_map.get(f"{variable}{int(z)}", IdentityScaler()).transform(data[k,])
                 data[k,] = scaled_data
 
             data_upper.append(data)
@@ -133,7 +133,7 @@ class DataDataset(Dataset):
             data = self.transform_target(data.to(self.dtype))
 
             for k, z in enumerate(self.z_target):
-                scaled_data = self.scaler_map[f"{variable}{int(z)}"].transform(data[k,])
+                scaled_data = self.scaler_map.get(f"{variable}{int(z)}", IdentityScaler).transform(data[k,])
                 data[k,] = scaled_data
 
             crop_datas = []

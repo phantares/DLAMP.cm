@@ -5,6 +5,13 @@ import json
 from . import ScalerPipe
 
 
+class IdentityScaler:
+    def transform(self, data):
+        return data
+
+    def inverse_transform(self, data):
+        return data
+
 def get_scaler_map(stats_file):
     env = dotenv_values(".env")
 
