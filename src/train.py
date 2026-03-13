@@ -2,14 +2,11 @@ from pathlib import Path
 from dotenv import dotenv_values
 import hydra
 from lightning import Trainer
-from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
-
-from dataset import DataManager
-from callbacks import VisualizerCallback
+from omegaconf import DictConfig
 
 
-@hydra.main(version_base=None, config_path="config", config_name="train")
+@hydra.main(version_base=None, config_path="../config", config_name="train")
 def main(cfg) -> None:
     env = dotenv_values(".env")
 
@@ -22,10 +19,10 @@ def main(cfg) -> None:
     experiment_name = cfg.experiment.name
     print(f"Training experiment: {experiment_name}")
 
-    datamodule = DataManager(
+    datamodule = hydra.utils.instantiate(
+        cfg.dataset,
         input_dir=Path(env.get("INPUT_DIR")),
         dtype=dtype,
-        **cfg.dataset,
     )
 
     model = hydra.utils.instantiate(
@@ -39,26 +36,16 @@ def main(cfg) -> None:
 
     logger = hydra.utils.instantiate(cfg.logger)
 
-    visualizer = VisualizerCallback(
-        stats_file=cfg.dataset.res.stats_file,
-        z_levels=cfg.dataset.var.z_target,
-        target_var=cfg.dataset.var.target,
-        log_every_n_epochs=1,
-    )
-
-    model_checkpoint = ModelCheckpoint(
-        dirpath=Path("checkpoints", experiment_name),
-        filename="{epoch}-{step}-{total_val_epoch:.6f}",
-        save_top_k=3,
-        monitor="total_val_epoch",
-        mode="min",
-    )
+    callbacks = []
+    for _, cb_conf in cfg.callbacks.items():
+        if isinstance(cb_conf, DictConfig) and "_target_" in cb_conf:
+            callbacks.append(hydra.utils.instantiate(cb_conf))
 
     gpu_count = torch.cuda.device_count()
     strategy = "ddp" if gpu_count > 1 else "auto"
     trainer = Trainer(
         logger=logger,
-        callbacks=[model_checkpoint, visualizer],
+        callbacks=callbacks,
         accelerator="gpu",
         strategy=strategy,
         devices=gpu_count,

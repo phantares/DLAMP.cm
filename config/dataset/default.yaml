@@ -1,3 +1,4 @@
+_target_: dataset.DataManager
 train:
   batch_size: 4 
 val:
