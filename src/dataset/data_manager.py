@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from . import DataIndexer, DataDataset
+from utils import get_scaler_map
 
 
 class DataManager(L.LightningDataModule):
@@ -15,6 +16,10 @@ class DataManager(L.LightningDataModule):
         self.loader_settings = self._get_loader_setting()
 
     def setup(self, stage: str):
+        stats_file = self.hparams.res.stats_file
+        scaler_map = get_scaler_map(stats_file)
+        res_config = {k: v for k, v in self.hparams.res.items() if k != "stats_file"}
+
         if stage == "fit" or stage == "test":
             indexer = DataIndexer(
                 input_dir=self.hparams.input_dir, **self.hparams.split
@@ -22,23 +27,26 @@ class DataManager(L.LightningDataModule):
 
             self.train_dataset = DataDataset(
                 indexes=indexer.train_index,
+                scaler_map=scaler_map,
                 dtype=self.hparams.dtype,
-                **self.hparams.res,
+                **res_config,
                 **self.hparams.var,
             )
 
             self.val_dataset = DataDataset(
                 indexes=indexer.val_index,
+                scaler_map=scaler_map,
                 dtype=self.hparams.dtype,
-                **self.hparams.res,
+                **res_config,
                 **self.hparams.var,
             )
 
             self.test_dataset = DataDataset(
                 mode="test",
                 indexes=indexer.test_index,
+                scaler_map=scaler_map,
                 dtype=self.hparams.dtype,
-                **self.hparams.res,
+                **res_config,
                 **self.hparams.var,
             )
 

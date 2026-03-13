@@ -74,15 +74,15 @@ class StandardDownscaling(L.LightningModule):
                 global_grid,
             ),
             "time": torch.randn(example_batch, 4),
-            "column_top": torch.randn(example_batch, example_crop),
+            "column_bottom": torch.randn(example_batch, example_crop),
             "column_left": torch.randn(example_batch, example_crop),
         }
 
         self.test_targets = []
         self.test_outputs = []
 
-    def forward(self, single, upper, time, column_top, column_left, shuffle=False):
-        crop_number = column_top.shape[1]
+    def forward(self, single, upper, time, column_bottom, column_left, shuffle=False):
+        crop_number = column_bottom.shape[1]
 
         time = repeat(time, "b c -> (b n) c", n=crop_number)
 
@@ -93,7 +93,7 @@ class StandardDownscaling(L.LightningModule):
 
         column_single = crop_column(
             single,
-            column_top,
+            column_bottom,
             column_left,
             (self.column_grid, self.column_grid),
             output_shape=(self.target_grid, self.target_grid),
@@ -104,7 +104,7 @@ class StandardDownscaling(L.LightningModule):
 
         column_upper = crop_column(
             upper,
-            column_top,
+            column_bottom,
             column_left,
             (self.column_grid, self.column_grid),
             output_shape=(self.target_grid, self.target_grid),
@@ -136,14 +136,14 @@ class StandardDownscaling(L.LightningModule):
         return output
 
     def general_step(
-        self, single, upper, time, target, column_top, column_left, shuffle=False
+        self, single, upper, time, target, column_bottom, column_left, shuffle=False
     ):
 
         output = self(
             single=single,
             upper=upper,
             time=time,
-            column_top=column_top,
+            column_bottom=column_bottom,
             column_left=column_left,
             shuffle=shuffle,
         )
@@ -157,10 +157,10 @@ class StandardDownscaling(L.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
 
     def training_step(self, batch, batch_idx):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         loss, loss_var, _ = self.general_step(
-            single, upper, time, target, column_top, column_left, shuffle=True
+            single, upper, time, target, column_bottom, column_left, shuffle=True
         )
 
         self.log(
@@ -178,10 +178,10 @@ class StandardDownscaling(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         loss, loss_var, _ = self.general_step(
-            single, upper, time, target, column_top, column_left
+            single, upper, time, target, column_bottom, column_left
         )
 
         self.log(
@@ -199,10 +199,10 @@ class StandardDownscaling(L.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         loss, loss_var, output = self.general_step(
-            single, upper, time, target, column_top, column_left
+            single, upper, time, target, column_bottom, column_left
         )
 
         self.test_targets.append(target.cpu().numpy())
@@ -232,12 +232,12 @@ class StandardDownscaling(L.LightningModule):
                 )
 
     def generate_sample(self, batch):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         return self(
             single=single[0:1],
             upper=upper[0:1],
             time=time[0:1],
-            column_top=column_top[0:1, 0:1],
+            column_bottom=column_bottom[0:1, 0:1],
             column_left=column_left[0:1, 0:1],
         )

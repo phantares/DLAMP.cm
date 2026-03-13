@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 class LogScaler:
@@ -6,13 +7,20 @@ class LogScaler:
         self.ref = ref
 
     def transform(self, data):
-        if self.ref is not None:
-            data = np.log10(data / self.ref + 1)
+        if self.ref is None:
+            return data
 
-        return data
+        if torch.is_tensor(data):
+            return torch.log10(data / self.ref + 1)
+        else:
+            return np.log10(data / self.ref + 1)
 
     def inverse_transform(self, data):
-        if self.ref is not None:
-            data = (np.power(10, data) - 1) * self.ref
+        if self.ref is None:
+            return data
 
-        return data
+        if torch.is_tensor(data):
+            return (torch.pow(10, data) - 1) * self.ref
+        else:
+            return (np.power(10, data) - 1) * self.ref
+
