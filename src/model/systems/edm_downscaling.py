@@ -91,14 +91,14 @@ class EDMDownscaling(L.LightningModule):
             )
             .exp()
             .clamp(min=sigma_min, max=sigma_max),
-            "column_top": torch.randn(example_batch, example_crop),
+            "column_bottom": torch.randn(example_batch, example_crop),
             "column_left": torch.randn(example_batch, example_crop),
         }
 
     def forward(
-        self, single, upper, time, noise, sigma, column_top, column_left, shuffle=False
+        self, single, upper, time, noise, sigma, column_bottom, column_left, shuffle=False
     ):
-        crop_number = column_top.shape[1]
+        crop_number = column_bottom.shape[1]
 
         noise = rearrange(noise, "b n c z h w -> (b n) c z h w")
         sigma = rearrange(sigma, "b n 1 1 1 1 -> (b n) 1 1 1 1")
@@ -120,7 +120,7 @@ class EDMDownscaling(L.LightningModule):
 
         column_single = crop_column(
             single,
-            column_top,
+            column_bottom,
             column_left,
             (self.column_grid, self.column_grid),
             output_shape=(self.target_grid, self.target_grid),
@@ -131,7 +131,7 @@ class EDMDownscaling(L.LightningModule):
 
         column_upper = crop_column(
             upper,
-            column_top,
+            column_bottom,
             column_left,
             (self.column_grid, self.column_grid),
             output_shape=(self.target_grid, self.target_grid),
@@ -166,7 +166,7 @@ class EDMDownscaling(L.LightningModule):
         return output
 
     def general_step(
-        self, single, upper, time, target, sigma, column_top, column_left, shuffle=False
+        self, single, upper, time, target, sigma, column_bottom, column_left, shuffle=False
     ):
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
@@ -179,7 +179,7 @@ class EDMDownscaling(L.LightningModule):
             time=time,
             noise=target + noise,
             sigma=sigma,
-            column_top=column_top,
+            column_bottom=column_bottom,
             column_left=column_left,
             shuffle=shuffle,
         )
@@ -193,7 +193,7 @@ class EDMDownscaling(L.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
 
     def training_step(self, batch, batch_idx):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         rnd_normal = torch.randn(
             [target.shape[0], target.shape[1], 1, 1, 1, 1], device=target.device
@@ -202,7 +202,7 @@ class EDMDownscaling(L.LightningModule):
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
 
         loss, loss_var = self.general_step(
-            single, upper, time, target, sigma, column_top, column_left, shuffle=True
+            single, upper, time, target, sigma, column_bottom, column_left, shuffle=True
         )
 
         self.log(
@@ -220,7 +220,7 @@ class EDMDownscaling(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         v_gen = torch.Generator(device=target.device).manual_seed(42 + batch_idx)
         rnd_normal = torch.randn(
@@ -232,7 +232,7 @@ class EDMDownscaling(L.LightningModule):
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
 
         loss, loss_var = self.general_step(
-            single, upper, time, target, sigma, column_top, column_left
+            single, upper, time, target, sigma, column_bottom, column_left
         )
 
         self.log(
@@ -261,7 +261,7 @@ class EDMDownscaling(L.LightningModule):
                 )
 
     def generate_sample(self, batch):
-        single, upper, time, target, column_top, column_left = batch
+        single, upper, time, target, column_bottom, column_left = batch
 
         v_gen = torch.Generator(device=self.device).manual_seed(42)
         sigma = (
@@ -280,6 +280,6 @@ class EDMDownscaling(L.LightningModule):
             time=time[0:1],
             noise=target[0:1, 0:1] + noise,
             sigma=sigma,
-            column_top=column_top[0:1, 0:1],
+            column_bottom=column_bottom[0:1, 0:1],
             column_left=column_left[0:1, 0:1],
         )

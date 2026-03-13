@@ -12,6 +12,7 @@ from callbacks import VisualizerCallback
 @hydra.main(version_base=None, config_path="config", config_name="train")
 def main(cfg) -> None:
     env = dotenv_values(".env")
+
     if cfg.dtype == "float64":
         dtype = torch.float64
     else:
@@ -21,7 +22,6 @@ def main(cfg) -> None:
     experiment_name = cfg.experiment.name
     print(f"Training experiment: {experiment_name}")
 
-    cfg.dataset.res.stats_file = Path(env.get("STATS_DIR")) / cfg.dataset.res.stats_file
     datamodule = DataManager(
         input_dir=Path(env.get("INPUT_DIR")),
         dtype=dtype,

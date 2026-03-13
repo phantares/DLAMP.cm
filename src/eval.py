@@ -5,14 +5,14 @@ import hydra
 from hydra import initialize, compose
 from lightning import Trainer
 import torch
-from torchvision.transforms.v2 import CenterCrop, Compose, Resize
+from torchvision.transforms.v2 import CenterCrop
 import json
 import h5py as h5
 import numpy as np
 from itertools import groupby
 
 from dataset import DataManager, DataIndexer
-from utils import find_best_model, ScalerPipe, write_file
+from utils import find_best_model, get_scaler_map, write_file
 
 
 def main(exp_name, wandb_id=None):
@@ -33,7 +33,6 @@ def main(exp_name, wandb_id=None):
     column_km = cfg.dataset.res.global_grid * cfg.dataset.res.resolution_input
     cfg.dataset.res.column_km = column_km
     cfg.dataset.res.crop_number = 1
-    cfg.dataset.res.stats_file = Path(env.get("STATS_DIR")) / cfg.dataset.res.stats_file
 
     datamodule = DataManager(
         input_dir=Path(env.get("INPUT_DIR")),
@@ -62,12 +61,11 @@ def main(exp_name, wandb_id=None):
 
     test_targets = np.concatenate(model.test_targets)
     test_outputs = np.concatenate(model.test_outputs)
-    with open(cfg.dataset.res.stats_file) as f:
-        stats = json.load(f)
+    scaler_map = get_scaler_map(stats_file)
 
     for c, variable in enumerate(cfg.dataset.var.target):
         for k, z in enumerate(cfg.dataset.var.z_target):
-            scaler = ScalerPipe(stats.get(f"{variable}{int(z)}"))
+            scaler = scaler_map[f"{variable}{int(z)}"]
             invt_tar = scaler.inverse_transform(test_targets[:, :, c, k, ...])
             invt_tar[invt_tar < 0] = 0
 
@@ -89,12 +87,8 @@ def main(exp_name, wandb_id=None):
         * cfg.dataset.res.resolution_input
         / cfg.dataset.res.resolution_target
     )
-    transform_grid = Compose(
-        [
-            CenterCrop(global_grid_hr),
-            Resize(cfg.dataset.res.global_grid, antialias=False),
-        ]
-    )
+    transform_grid = CenterCrop(global_grid_hr)
+
     current_index = 0
     for input_file, group in groupby(test_indexes, key=lambda x: x["file"]):
         samples = list(group)
@@ -107,7 +101,6 @@ def main(exp_name, wandb_id=None):
             coords = np.stack([f["latitude"][:], f["longitude"][:]])
             transformed_coords = transform_grid(torch.as_tensor(coords)).numpy()
             new_lat, new_lon = transformed_coords[0], transformed_coords[1]
-        print(np.shape(new_lat))
 
         new_coords = {
             "time": new_time,

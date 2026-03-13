@@ -1,18 +1,17 @@
-from torch.utils.data import Dataset
-import json
 import h5py as h5
 import numpy as np
 import torch
+from torch.utils.data import Dataset
 from torchvision.transforms.v2 import CenterCrop, Compose, Resize
 
-from utils import encode_time, ScalerPipe
+from utils import encode_time
 
 
 class DataDataset(Dataset):
     def __init__(
         self,
         indexes,
-        stats_file,
+        scaler_map,
         global_grid,
         resolution_input,
         resolution_target,
@@ -30,6 +29,7 @@ class DataDataset(Dataset):
         super().__init__()
 
         self.mode = mode
+        self.handles = {}
 
         self.column_grid = column_km // resolution_input
         self.target_grid = column_km // resolution_target
@@ -37,11 +37,9 @@ class DataDataset(Dataset):
 
         self.dtype = dtype
         self.indexes = indexes
-        with open(stats_file, "r") as f:
-            self.stats = json.load(f)
+        self.scaler_map = scaler_map
 
         self.single = input_single
-        self.static = input_static
         self.upper = input_upper
         self.target = target
 
@@ -58,6 +56,27 @@ class DataDataset(Dataset):
         )
         self.transform_target = Compose([CenterCrop(global_grid_hr)])
 
+        f = self._get_handles(self.indexes[0]["file"])
+
+        data_static = []
+        for variable in input_static:
+            data = torch.from_numpy(f[variable][:])
+            data = data.unsqueeze(0).to(self.dtype)
+
+            if variable in ["longitude", "latitude"]:
+                data = self.transform_grid(data)
+            else:
+                data = self.transform_input(data)
+
+            data = self.scaler_map[variable].transform(data.squeeze(0))
+            data_static.append(data)
+
+        self.data_static = torch.stack(data_static)
+
+        pressure = f["pressure"][:]
+        self.z_up = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_input)
+        self.z_tar = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_target)
+
     def __len__(self):
         return len(self.indexes)
 
@@ -71,97 +90,74 @@ class DataDataset(Dataset):
         data_upper = []
         data_target = []
 
-        with h5.File(file, "r") as f:
-            pressure = f["pressure"][:]
-            z_up = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_input)
-            z_tar = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_target)
+        f = self._get_handles(file)
 
-            for variable in self.single:
-                data = np.array(f[variable][t,])
-                data = ScalerPipe(self.stats.get(variable)).transform(data)
-                data_single.append(data)
+        for variable in self.single:
+            data = torch.from_numpy(f[variable][t,])
+            data = data.unsqueeze(0).to(self.dtype)
+            data = self.transform_input(data)
+            data = self.scaler_map[variable].transform(data.squeeze(0))
+            data_single.append(data)
 
-            data_single = self._preprocess(data_single, self.transform_input)
+        data_single = torch.stack(data_single)
+        data_single = torch.cat((data_single, self.data_static), axis=0)
 
-            for variable in self.static:
-                data = np.array(f[variable])
-                data = ScalerPipe(self.stats.get(variable)).transform(data)
-                data = data[np.newaxis, ...]
+        for variable in self.upper:
+            data = torch.from_numpy(f[variable][t,self.z_up,])
+            data = self.transform_input(data.to(self.dtype))
 
-                if variable in ["longitude", "latitude"]:
-                    data = self._preprocess(data, transform=self.transform_grid)
-                else:
-                    data = self._preprocess(data, transform=self.transform_input)
+            for k, z in enumerate(self.z_input):
+                scaled_data = self.scaler_map[f"{variable}{int(z)}"].transform(data[k,])
+                data[k,] = scaled_data
 
-                data_single = torch.cat((data_single, data), axis=0)
+            data_upper.append(data)
 
-            for variable in self.upper:
-                data = np.array(f[variable][t,])
-                data = data[z_up,]
+        data_upper = torch.stack(data_upper)
 
-                for k, z in enumerate(self.z_input):
-                    scaled_data = ScalerPipe(
-                        self.stats.get(f"{variable}{z}")
-                    ).transform(
-                        data[k,]
-                    )
-                    data[k,] = scaled_data
+        H, W = data_single.shape[-2], data_single.shape[-1]
+        if self.mode == "test":
+            bottoms = [0]
+            lefts = [0]
 
-                data_upper.append(data)
+        else:
+            bottoms = np.random.randint(
+                0, H - self.column_grid + 1, size=self.crop_number
+            )
+            lefts = np.random.randint(
+                0, W - self.column_grid + 1, size=self.crop_number
+            )
 
-            data_upper = self._preprocess(data_upper, self.transform_input)
+        data_target = []
+        for variable in self.target:
+            data = torch.from_numpy(f[variable][t, self.z_tar])
+            data = self.transform_target(data.to(self.dtype))
 
-            H, W = data_single.shape[-2], data_single.shape[-1]
-            tops = []
-            lefts = []
-            for _ in range(self.crop_number):
-                if self.mode == "test":
-                    top = 0
-                    left = 0
+            for k, z in enumerate(self.z_target):
+                scaled_data = self.scaler_map[f"{variable}{int(z)}"].transform(data[k,])
+                data[k,] = scaled_data
 
-                else:
-                    top = np.random.randint(0, H - self.column_grid + 1)
-                    left = np.random.randint(0, W - self.column_grid + 1)
+            crop_datas = []
+            for n in range(self.crop_number):
+                data_bottom = int(bottoms[n] * self.factor)
+                data_left = int(lefts[n] * self.factor)
 
-                tops.append(top)
-                lefts.append(left)
+                crop_data = data[
+                    ...,
+                    data_bottom : data_bottom + self.target_grid,
+                    data_left : data_left + self.target_grid,
+                ]
+                crop_datas.append(crop_data)
 
-                datas = []
+            data_target.append(torch.stack(crop_datas))
 
-                for variable in self.target:
-                    data = np.array(f[variable][t,])
-                    data = data[z_tar,]
-                    data = self._preprocess(data, self.transform_target)
+        data_target = torch.stack(data_target, dim=1)
+        bottoms = torch.tensor(bottoms, dtype=self.dtype)
+        lefts = torch.tensor(lefts, dtype=self.dtype)
 
-                    data_top = int(top * self.factor)
-                    data_left = int(left * self.factor)
-                    data = data[
-                        ...,
-                        data_top : data_top + self.target_grid,
-                        data_left : data_left + self.target_grid,
-                    ]
+        return data_single, data_upper, data_time, data_target, bottoms, lefts
 
-                    for k, z in enumerate(self.z_target):
-                        scaled_data = ScalerPipe(
-                            self.stats.get(f"{variable}{z}")
-                        ).transform(
-                            data[k,]
-                        )
-                        data[k,] = scaled_data
+    def _get_handles(self, file_path):
+        if file_path not in self.handles:
+            self.handles[file_path] = h5.File(file_path, "r", swmr=True)
 
-                    datas.append(data)
-                data_target.append(datas)
-
-            data_target = self._preprocess(data_target)
-            tops = torch.tensor(tops, dtype=self.dtype)
-            lefts = torch.tensor(lefts, dtype=self.dtype)
-
-        return data_single, data_upper, data_time, data_target, tops, lefts
-
-    def _preprocess(self, data, transform=None):
-        data = np.array(data)
-        data = torch.from_numpy(data)
-        if transform is not None:
-            data = transform(data)
-
-        return data.to(self.dtype)
+        return self.handles[file_path]
