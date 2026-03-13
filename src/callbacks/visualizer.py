@@ -1,18 +1,16 @@
 import lightning as L
 import torch
-import json
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from utils import ScalerPipe
+from utils import get_scaler_map
 
 
 class VisualizerCallback(L.Callback):
     def __init__(self, stats_file, z_levels, target_var, log_every_n_epochs=1):
         super().__init__()
 
-        with open(stats_file, "r") as f:
-            self.stats = json.load(f)
+        self.scaler_map = get_scaler_map(stats_file)
 
         self.z_levels = z_levels
         self.target_var = target_var
@@ -22,7 +20,7 @@ class VisualizerCallback(L.Callback):
         self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
     ):
         if batch_idx == 0:
-            single, upper, time, target, column_top, column_left = batch
+            single, upper, time, target, column_bottom, column_left = batch
 
             with torch.no_grad():
                 pred = pl_module.generate_sample(batch)
@@ -31,7 +29,7 @@ class VisualizerCallback(L.Callback):
                 pred = pred[0, 0].cpu()
                 for v, variable in enumerate(self.target_var):
                     for k, lev in enumerate(self.z_levels):
-                        scaler = ScalerPipe(self.stats.get(f"{variable}{int(lev)}"))
+                        scaler = self.scaler_map[f"{variable}{int(lev)}"]
                         invt_tar = scaler.inverse_transform(target[v, k])
                         invt_pred = scaler.inverse_transform(pred[v, k])
 
