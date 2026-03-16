@@ -205,8 +205,8 @@ class StandardDownscaling(L.LightningModule):
             single, upper, time, target, column_bottom, column_left
         )
 
-        self.test_targets.append(target.cpu().numpy())
-        self.test_outputs.append(output.cpu().numpy())
+        self.test_targets.append(target.detach().cpu())
+        self.test_outputs.append(output.detach().cpu())
 
         self.log(
             "total_test",
