@@ -1,55 +1,58 @@
 from pathlib import Path
 import argparse
-from model import DirectDownscaling
+import hydra
+from hydra import initialize, compose
+import torch
+
+from utils import find_best_model
 
 
-def export_best_model_onnx(exp_name, device="cpu"):
-    folder = Path("checkpoints", exp_name)
-    files = list(folder.glob("*.ckpt"))
+def main(exp_name):
+    with initialize(config_path=f"../experiments/{exp_name}/.hydra", version_base=None):
+        cfg = compose(config_name="config")
 
-    if not files:
-        raise FileNotFoundError("No checkpoints found!")
+    dtype = getattr(torch, cfg.dtype, torch.float32)
+    torch.set_default_dtype(dtype)
 
-    best_loss = float("inf")
-    best_model = ""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if not files:
-        print("No .ckpt files found")
-        return
+    checkpoint_path = find_best_model(exp_name)
+    model_class = hydra.utils.get_class(cfg.model.system._target_)
 
-    for f in files:
-        try:
-            loss = float((f.stem.split("-")[-1]).split("=")[-1])
-
-            if loss < best_loss:
-                best_loss = loss
-                best_model = f
-
-        except (ValueError, IndexError):
-            print(f"Skipping file with unexpected format: {f.name}")
-            continue
-
-    print(f"Best model: {best_model.name}")
-
-    model = DirectDownscaling.load_from_checkpoint(best_model, crop_number=2)
-    if device == "cpu":
-        model.cpu()
-    model.eval()
+    column_km = cfg.dataset.res.global_grid * cfg.dataset.res.resolution_input
+    model = model_class.load_from_checkpoint(checkpoint_path, column_km=column_km)
+    model.to(device).to(dtype).eval()
 
     input_keys = list(model.example_input_array.keys())
-    dynamic_axes_config = {
-        "single": {0: "batch_size"},
-        "upper": {0: "batch_size"},
-        "time": {0: "batch_size"},
-        "noise": {0: "batch_size", 1: "crop_number"},
-        "sigma": {0: "batch_size", 1: "crop_number"},
-        "column_top": {0: "batch_size", 1: "crop_number"},
-        "column_left": {0: "batch_size", 1: "crop_number"},
-        "output": {0: "batch_size", 1: "crop_number"},
+    dynamic_axes_config = {}
+    for k in input_keys:
+        dim = len(model.example_input_array[k].shape)
+
+        dynamic_axes_config[k] = {0: "batch_size"}
+
+        if k in ["noise", "sigma", "column_bottom", "column_left"]:
+            dynamic_axes_config[k][1] = "crop_number"
+
+        if k in ["single", "upper"]:
+            dynamic_axes_config[k][dim - 2] = "global_h"
+            dynamic_axes_config[k][dim - 1] = "global_w"
+        elif k in ["noise"]:
+            dynamic_axes_config[k][dim - 2] = "output_h"
+            dynamic_axes_config[k][dim - 1] = "output_w"
+
+    with torch.no_grad():
+        output_example = model(**model.example_input_array)
+        out_dim = len(output_example.shape)
+
+    dynamic_axes_config["output"] = {
+        0: "batch_size",
+        1: "crop_number",
+        out_dim - 2: "output_h",
+        out_dim - 1: "output_w",
     }
 
     model.to_onnx(
-        folder / f"{exp_name}.onnx",
+        Path("checkpoints", exp_name, f"{exp_name}.onnx"),
         export_params=True,
         input_names=input_keys,
         output_names=["output"],
@@ -65,13 +68,6 @@ if __name__ == "__main__":
         type=str,
         help="Enter experiment name.",
     )
-    parser.add_argument(
-        "--device",
-        "-d",
-        type=str,
-        default="cpu",
-        help="Enter device.",
-    )
     args = parser.parse_args()
 
-    export_best_model_onnx(args.exp, args.device)
+    main(args.exp)
