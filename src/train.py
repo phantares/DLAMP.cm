@@ -10,19 +10,14 @@ from omegaconf import DictConfig
 def main(cfg) -> None:
     env = dotenv_values(".env")
 
-    if cfg.dtype == "float64":
-        dtype = torch.float64
-    else:
-        dtype = torch.float32
+    dtype = getattr(torch, cfg.dtype, torch.float32)
     torch.set_default_dtype(dtype)
 
     experiment_name = cfg.experiment.name
     print(f"Training experiment: {experiment_name}")
 
     datamodule = hydra.utils.instantiate(
-        cfg.dataset,
-        input_dir=Path(env.get("INPUT_DIR")),
-        dtype=dtype,
+        cfg.dataset, input_dir=Path(env.get("INPUT_DIR")), dtype=dtype
     )
 
     model = hydra.utils.instantiate(

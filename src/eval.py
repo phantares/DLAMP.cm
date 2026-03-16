@@ -3,15 +3,14 @@ from pathlib import Path
 from dotenv import dotenv_values
 import hydra
 from hydra import initialize, compose
-from lightning import Trainer
 import torch
 from torchvision.transforms.v2 import CenterCrop
-import json
+from lightning import Trainer
 import h5py as h5
 import numpy as np
 from itertools import groupby
 
-from dataset import DataManager, DataIndexer
+from dataset import DataIndexer
 from utils import find_best_model, get_scaler_map, write_file
 
 
@@ -21,10 +20,7 @@ def main(exp_name, wandb_id=None):
     with initialize(config_path=f"../experiments/{exp_name}/.hydra", version_base=None):
         cfg = compose(config_name="config")
 
-    if cfg.dtype == "float64":
-        dtype = torch.float64
-    else:
-        dtype = torch.float32
+    dtype = getattr(torch, cfg.dtype, torch.float32)
     torch.set_default_dtype(dtype)
 
     experiment_name = cfg.experiment.name
@@ -34,49 +30,47 @@ def main(exp_name, wandb_id=None):
     cfg.dataset.res.column_km = column_km
     cfg.dataset.res.crop_number = 1
 
-    datamodule = DataManager(
-        input_dir=Path(env.get("INPUT_DIR")),
-        dtype=dtype,
-        **cfg.dataset,
+    datamodule = hydra.utils.instantiate(
+        cfg.dataset, input_dir=Path(env.get("INPUT_DIR")), dtype=dtype
     )
 
     checkpoint_path = find_best_model(exp_name)
     model_class = hydra.utils.get_class(cfg.model.system._target_)
 
-    model = model_class.load_from_checkpoint(
-        checkpoint_path,
-        column_km=column_km,
-    )
+    model = model_class.load_from_checkpoint(checkpoint_path, column_km=column_km)
     model.to(dtype)
 
     logger = hydra.utils.instantiate(cfg.logger, id=wandb_id, resume="allow")
 
     trainer = Trainer(
         logger=logger,
-        accelerator="gpu",
+        accelerator="auto",
         devices=1,
     )
 
     trainer.test(model, datamodule)
 
-    test_targets = np.concatenate(model.test_targets)
-    test_outputs = np.concatenate(model.test_outputs)
-    scaler_map = get_scaler_map(stats_file)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    test_targets = torch.cat(model.test_targets).to(device)
+    test_outputs = torch.cat(model.test_outputs).to(device)
+    scaler_map = get_scaler_map(cfg.dataset.res.stats_file)
 
     for c, variable in enumerate(cfg.dataset.var.target):
         for k, z in enumerate(cfg.dataset.var.z_target):
             scaler = scaler_map[f"{variable}{int(z)}"]
-            invt_tar = scaler.inverse_transform(test_targets[:, :, c, k, ...])
-            invt_tar[invt_tar < 0] = 0
 
-            invt_pred = scaler.inverse_transform(test_outputs[:, :, c, k, ...])
-            invt_pred[invt_pred < 0] = 0
+            invt_tar = scaler.inverse_transform(test_targets[:, :, c, k, ...]).clamp(
+                min=0
+            )
+            invt_pred = scaler.inverse_transform(test_outputs[:, :, c, k, ...]).clamp(
+                min=0
+            )
 
             test_targets[:, :, c, k, ...] = invt_tar
             test_outputs[:, :, c, k, ...] = invt_pred
 
-    test_targets = test_targets.reshape(-1, *test_targets.shape[2:])
-    test_outputs = test_outputs.reshape(-1, *test_outputs.shape[2:])
+    test_targets = test_targets.cpu().numpy().reshape(-1, *test_targets.shape[2:])
+    test_outputs = test_outputs.cpu().numpy().reshape(-1, *test_outputs.shape[2:])
 
     test_indexes = DataIndexer(
         Path(env.get("INPUT_DIR")), **cfg.dataset.split

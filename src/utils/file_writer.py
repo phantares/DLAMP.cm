@@ -44,7 +44,7 @@ def write_file(
                     p_ds.attrs[a_n] = a_v
                     t_ds.attrs[a_n] = a_v
 
-    print(f"File saved with full metadata inheritance: {output_file}")
+    print(f"File saved : {output_file}")
 
 
 def attach_dim(data, *dims):
