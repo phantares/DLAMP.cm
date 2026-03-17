@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from utils import get_scaler_map, IdentityScaler
+from utils import get_scaler_map
 
 
 class VisualizerCallback(L.Callback):
@@ -29,7 +29,8 @@ class VisualizerCallback(L.Callback):
                 pred = pred[0, 0].cpu()
                 for v, variable in enumerate(self.target_var):
                     for k, lev in enumerate(self.z_levels):
-                        scaler = self.scaler_map.get(f"{variable}{int(lev)}", IdentityScaler())
+                        scaler = self.scaler_map[f"{variable}{int(lev)}"]
+
                         invt_tar = scaler.inverse_transform(target[v, k])
                         invt_pred = scaler.inverse_transform(pred[v, k])
 
