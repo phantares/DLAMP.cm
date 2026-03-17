@@ -13,8 +13,6 @@ class DataManager(L.LightningDataModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.loader_settings = self._get_loader_setting()
-
     def setup(self, stage: str):
         stats_file = self.hparams.res.stats_file
         scaler_map = get_scaler_map(stats_file)
@@ -51,41 +49,55 @@ class DataManager(L.LightningDataModule):
             )
 
     def train_dataloader(self):
+        loader_settings = self._get_loader_setting("fit")
+
         return DataLoader(
             self.train_dataset,
             shuffle=True,
-            **self.loader_settings,
+            **loader_settings,
             **self.hparams.train,
         )
 
     def val_dataloader(self):
+        loader_settings = self._get_loader_setting("fit")
+
         return DataLoader(
             self.val_dataset,
             shuffle=False,
-            **self.loader_settings,
+            **loader_settings,
             **self.hparams.val,
         )
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, shuffle=False, **self.hparams.test)
+        loader_settings = self._get_loader_setting("test")
 
-    def _get_loader_setting(self):
+        return DataLoader(
+            self.test_dataset,
+            shuffle=False,
+            **loader_settings,
+            **self.hparams.test,
+        )
+
+    def _get_loader_setting(self, stage):
         gpu_count = torch.cuda.device_count()
 
-        if gpu_count > 1:
-            try:
-                cpu_count = len(os.sched_getaffinity(0))
-            except AttributeError:
-                cpu_count = os.cpu_count()
+        try:
+            cpu_count = len(os.sched_getaffinity(0))
+        except AttributeError:
+            cpu_count = os.cpu_count()
 
-            loader_setting = {
-                "num_workers": cpu_count // gpu_count,
-                "multiprocessing_context": "spawn",
-                "persistent_workers": True,
-                "pin_memory": True,
-            }
+        if gpu_count > 1:
+            if stage == "fit":
+                num_workers = cpu_count // gpu_count
+            else:
+                num_workers = cpu_count
 
         else:
-            loader_setting = {"num_workers": 8}
+            num_workers = min(8, cpu_count)
 
-        return loader_setting
+        return {
+            "num_workers": num_workers,
+            "multiprocessing_context": "spawn",
+            "persistent_workers": True,
+            "pin_memory": True,
+        }
