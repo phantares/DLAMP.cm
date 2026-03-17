@@ -96,7 +96,15 @@ class EDMDownscaling(L.LightningModule):
         }
 
     def forward(
-        self, single, upper, time, noise, sigma, column_bottom, column_left, shuffle=False
+        self,
+        single,
+        upper,
+        time,
+        noise,
+        sigma,
+        column_bottom,
+        column_left,
+        shuffle=False,
     ):
         crop_number = column_bottom.shape[1]
 
@@ -166,7 +174,15 @@ class EDMDownscaling(L.LightningModule):
         return output
 
     def general_step(
-        self, single, upper, time, target, sigma, column_bottom, column_left, shuffle=False
+        self,
+        single,
+        upper,
+        time,
+        target,
+        sigma,
+        column_bottom,
+        column_left,
+        shuffle=False,
     ):
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
@@ -205,16 +221,8 @@ class EDMDownscaling(L.LightningModule):
             single, upper, time, target, sigma, column_bottom, column_left, shuffle=True
         )
 
-        self.log(
-            "total_train",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
         self._log_loss_var(
-            loss_var, self.hparams.target_var, self.hparams.z_target, "train"
+            loss, loss_var, self.hparams.target_var, self.hparams.z_target, "train"
         )
 
         return loss
@@ -235,27 +243,28 @@ class EDMDownscaling(L.LightningModule):
             single, upper, time, target, sigma, column_bottom, column_left
         )
 
+        self._log_loss_var(
+            loss, loss_var, self.hparams.target_var, self.hparams.z_target, "val"
+        )
+
+        return loss
+
+    def _log_loss_var(self, loss, loss_var, variable_name, level, stage):
         self.log(
-            "total_val",
+            f"total_{stage}",
             loss,
             on_step=True,
             on_epoch=True,
             prog_bar=True,
             sync_dist=True,
         )
-        self._log_loss_var(
-            loss_var, self.hparams.target_var, self.hparams.z_target, "val"
-        )
 
-        return loss
-
-    def _log_loss_var(self, loss, variable_name, level, stage):
         for z, lev in enumerate(level):
             for n, var in enumerate(variable_name):
                 self.log(
                     f"{stage}/{var}{lev}",
-                    loss[n, z],
-                    on_step=False,
+                    loss_var[n, z],
+                    on_step=stage == "test",
                     on_epoch=True,
                     sync_dist=True,
                 )

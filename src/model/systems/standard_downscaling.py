@@ -163,16 +163,8 @@ class StandardDownscaling(L.LightningModule):
             single, upper, time, target, column_bottom, column_left, shuffle=True
         )
 
-        self.log(
-            "total_train",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
         self._log_loss_var(
-            loss_var, self.hparams.target_var, self.hparams.z_target, "train"
+            loss, loss_var, self.hparams.target_var, self.hparams.z_target, "train"
         )
 
         return loss
@@ -184,16 +176,8 @@ class StandardDownscaling(L.LightningModule):
             single, upper, time, target, column_bottom, column_left
         )
 
-        self.log(
-            "total_val",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
         self._log_loss_var(
-            loss_var, self.hparams.target_var, self.hparams.z_target, "val"
+            loss, loss_var, self.hparams.target_var, self.hparams.z_target, "val"
         )
 
         return loss
@@ -208,25 +192,26 @@ class StandardDownscaling(L.LightningModule):
         self.test_targets.append(target.detach().cpu())
         self.test_outputs.append(output.detach().cpu())
 
+        self._log_loss_var(
+            loss, loss_var, self.hparams.target_var, self.hparams.z_target, "test"
+        )
+
+    def _log_loss_var(self, loss, loss_var, variable_name, level, stage):
         self.log(
-            "total_test",
+            f"total_{stage}",
             loss,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
             sync_dist=True,
         )
-        self._log_loss_var(
-            loss_var, self.hparams.target_var, self.hparams.z_target, "test"
-        )
 
-    def _log_loss_var(self, loss, variable_name, level, stage):
         for z, lev in enumerate(level):
             for n, var in enumerate(variable_name):
                 self.log(
                     f"{stage}/{var}{lev}",
-                    loss[n, z],
-                    on_step=False,
+                    loss_var[n, z],
+                    on_step=stage == "test",
                     on_epoch=True,
                     sync_dist=True,
                 )
