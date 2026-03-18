@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.transforms.v2 import CenterCrop, Compose, Resize
 
-from utils import encode_time  # , IdentityScaler
+from utils import encode_time
 
 
 class DataDataset(Dataset):
@@ -21,6 +21,7 @@ class DataDataset(Dataset):
         input_static,
         input_upper,
         target,
+        threshold,
         z_input,
         z_target,
         dtype=torch.float64,
@@ -42,6 +43,7 @@ class DataDataset(Dataset):
         self.single = input_single
         self.upper = input_upper
         self.target = target
+        self.threshold = {var: threshold.get(var, 0.0) for var in target}
 
         self.z_input = z_input
         self.z_target = z_target
@@ -60,6 +62,7 @@ class DataDataset(Dataset):
             data_static = []
             for variable in input_static:
                 data = torch.from_numpy(f[variable][:])
+                data[data < 0.0] = 0.0
                 data = data.unsqueeze(0).to(self.dtype)
 
                 if variable in ["longitude", "latitude"]:
@@ -94,6 +97,8 @@ class DataDataset(Dataset):
 
         for variable in self.single:
             data = torch.from_numpy(f[variable][t,])
+            if variable not in ["u10", "v10"]:
+                data[data < 0.0] = 0.0
             data = data.unsqueeze(0).to(self.dtype)
             data = self.transform_input(data)
             data = self.scaler_map[variable].transform(data.squeeze(0))
@@ -109,6 +114,8 @@ class DataDataset(Dataset):
                     self.z_up,
                 ]
             )
+            if variable not in ["u", "v", "w"]:
+                data[data < 0.0] = 0.0
             data = self.transform_input(data.to(self.dtype))
 
             for k, z in enumerate(self.z_input):
@@ -135,6 +142,7 @@ class DataDataset(Dataset):
         data_target = []
         for variable in self.target:
             data = torch.from_numpy(f[variable][t, self.z_tar])
+            data[data < self.threshold[variable]] = 0.0
             data = self.transform_target(data.to(self.dtype))
 
             for k, z in enumerate(self.z_target):
