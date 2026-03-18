@@ -19,11 +19,17 @@ input_upper:
   - t
   - qv
 target:
-  - qc
-  - qr
   - qi
   - qs
   - qg
+  - qc
+  - qr
+threshold:
+  qi: 1e-8
+  qs: 1e-7
+  qg: 1e-7
+  qc: 1e-8
+  qr: 1e-7
 
 z_input:
   - 1000
