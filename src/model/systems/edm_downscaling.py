@@ -253,7 +253,7 @@ class EDMDownscaling(L.LightningModule):
         self.log(
             f"total_{stage}",
             loss,
-            on_step=True,
+            on_step=stage != "test",
             on_epoch=True,
             prog_bar=True,
             sync_dist=True,
@@ -264,7 +264,7 @@ class EDMDownscaling(L.LightningModule):
                 self.log(
                     f"{stage}/{var}{lev}",
                     loss_var[n, z],
-                    on_step=stage == "test",
+                    on_step=False,
                     on_epoch=True,
                     sync_dist=True,
                 )
