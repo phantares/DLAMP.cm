@@ -13,10 +13,8 @@ class StandardDownscaling(L.LightningModule):
         self,
         network_cfg,
         layer_cfg,
-        global_grid,
         resolution_input,
         resolution_target,
-        column_km,
         single_channel,
         upper_channel,
         output_channel,
@@ -34,13 +32,7 @@ class StandardDownscaling(L.LightningModule):
         network_cfg = OmegaConf.to_container(network_cfg, resolve=True)
         layer_cfg = OmegaConf.to_container(layer_cfg, resolve=True)
 
-        column_grid = column_km // resolution_input
-        target_grid = column_km // resolution_target
-
-        self.save_hyperparameters(ignore=["column_km"])
-
-        self.column_grid = column_grid
-        self.target_grid = target_grid
+        self.save_hyperparameters()
 
         self.use_global = network_cfg["use_global"]
         if self.use_global:
@@ -53,7 +45,6 @@ class StandardDownscaling(L.LightningModule):
         unet_factory = instantiate(network_cfg["unet"], _partial_=True)
         self.unet = unet_factory(
             layer_cfg=layer_cfg,
-            target_horizontal_shape=(target_grid, target_grid),
             single_channel=single_channel,
             upper_channel=upper_channel,
             out_channel=output_channel,
@@ -62,18 +53,21 @@ class StandardDownscaling(L.LightningModule):
 
         example_batch = 2
         example_crop = 3
+        example_full_grid = 224
+        example_column_km = 96.0
         self.example_input_array = {
             "single": torch.randn(
-                example_batch, single_channel, global_grid, global_grid
+                example_batch, single_channel, example_full_grid, example_full_grid
             ),
             "upper": torch.randn(
                 example_batch,
                 upper_channel,
                 len(z_input),
-                global_grid,
-                global_grid,
+                example_full_grid,
+                example_full_grid,
             ),
             "time": torch.randn(example_batch, 4),
+            "column_km": torch.tensor([example_column_km]),
             "column_bottom": torch.randn(example_batch, example_crop),
             "column_left": torch.randn(example_batch, example_crop),
         }
@@ -81,8 +75,12 @@ class StandardDownscaling(L.LightningModule):
         self.test_targets = []
         self.test_outputs = []
 
-    def forward(self, single, upper, time, column_bottom, column_left, shuffle=False):
+    def forward(
+        self, single, upper, time, column_km, column_bottom, column_left, shuffle=False
+    ):
         crop_number = column_bottom.shape[1]
+        column_grid = torch.round(column_km // self.hparams.resolution_input)
+        target_grid = torch.round(column_km // self.hparams.resolution_target)
 
         time = repeat(time, "b c -> (b n) c", n=crop_number)
 
@@ -95,8 +93,8 @@ class StandardDownscaling(L.LightningModule):
             single,
             column_bottom,
             column_left,
-            (self.column_grid, self.column_grid),
-            output_shape=(self.target_grid, self.target_grid),
+            (column_grid, column_grid),
+            output_shape=(target_grid, target_grid),
             mode="nearest",
             align_corners=True,
         )
@@ -106,8 +104,8 @@ class StandardDownscaling(L.LightningModule):
             upper,
             column_bottom,
             column_left,
-            (self.column_grid, self.column_grid),
-            output_shape=(self.target_grid, self.target_grid),
+            (column_grid, column_grid),
+            output_shape=(target_grid, target_grid),
             mode="nearest",
             align_corners=True,
         )
@@ -138,11 +136,17 @@ class StandardDownscaling(L.LightningModule):
     def general_step(
         self, single, upper, time, target, column_bottom, column_left, shuffle=False
     ):
+        column_km = (
+            torch.tensor([target.shape[-1] * self.hparams.resolution_target])
+            .to(target.dtype)
+            .to(target.device)
+        )
 
         output = self(
             single=single,
             upper=upper,
             time=time,
+            column_km=column_km,
             column_bottom=column_bottom,
             column_left=column_left,
             shuffle=shuffle,
@@ -218,11 +222,17 @@ class StandardDownscaling(L.LightningModule):
 
     def generate_sample(self, batch):
         single, upper, time, target, column_bottom, column_left = batch
+        column_km = (
+            torch.tensor([target.shape[-1] * self.hparams.resolution_target])
+            .to(target.dtype)
+            .to(device=target.device)
+        )
 
         return self(
             single=single[0:1],
             upper=upper[0:1],
             time=time[0:1],
+            column_km=column_km,
             column_bottom=column_bottom[0:1, 0:1],
             column_left=column_left[0:1, 0:1],
         )

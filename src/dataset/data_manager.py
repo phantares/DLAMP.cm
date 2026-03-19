@@ -90,7 +90,7 @@ class DataManager(L.LightningDataModule):
             if stage == "fit":
                 num_workers = cpu_count // gpu_count
             else:
-                num_workers = cpu_count
+                num_workers = cpu_count - 2
 
         else:
             num_workers = min(8, cpu_count)
