@@ -2,10 +2,10 @@ class MinMaxScaler:
     def __init__(self, min=None, max=None):
         self.min = min
 
-        if min is not None and max is not None and max > min:
+        if min is not None and max is not None:
             self.range = max - min
-        else: 
-            self.range= None
+        else:
+            self.range = None
 
     def transform(self, data):
         if self.range is None:

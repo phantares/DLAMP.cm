@@ -14,7 +14,7 @@ def main(exp_name):
     dtype = getattr(torch, cfg.dtype, torch.float32)
     torch.set_default_dtype(dtype)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = "cpu"
 
     checkpoint_path = find_best_model(exp_name)
