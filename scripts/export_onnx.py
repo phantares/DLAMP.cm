@@ -15,12 +15,12 @@ def main(exp_name):
     torch.set_default_dtype(dtype)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cpu"
 
     checkpoint_path = find_best_model(exp_name)
     model_class = hydra.utils.get_class(cfg.model.system._target_)
 
-    column_km = cfg.dataset.res.global_grid * cfg.dataset.res.resolution_input
-    model = model_class.load_from_checkpoint(checkpoint_path, column_km=column_km)
+    model = model_class.load_from_checkpoint(checkpoint_path)
     model.to(device).to(dtype).eval()
 
     input_keys = list(model.example_input_array.keys())
@@ -28,17 +28,20 @@ def main(exp_name):
     for k in input_keys:
         dim = len(model.example_input_array[k].shape)
 
-        dynamic_axes_config[k] = {0: "batch_size"}
+        if k == "column_km":
+            dynamic_axes_config[k] = {0: "dim_one"}
+        else:
+            dynamic_axes_config[k] = {0: "batch_size"}
 
         if k in ["noise", "sigma", "column_bottom", "column_left"]:
             dynamic_axes_config[k][1] = "crop_number"
 
         if k in ["single", "upper"]:
-            dynamic_axes_config[k][dim - 2] = "global_h"
-            dynamic_axes_config[k][dim - 1] = "global_w"
+            dynamic_axes_config[k][dim - 2] = "h_in"
+            dynamic_axes_config[k][dim - 1] = "w_in"
         elif k in ["noise"]:
-            dynamic_axes_config[k][dim - 2] = "output_h"
-            dynamic_axes_config[k][dim - 1] = "output_w"
+            dynamic_axes_config[k][dim - 2] = "h_out"
+            dynamic_axes_config[k][dim - 1] = "w_out"
 
     with torch.no_grad():
         output_example = model(**model.example_input_array)

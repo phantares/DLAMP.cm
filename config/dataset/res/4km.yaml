@@ -2,5 +2,5 @@ stats_file: stats_4km.json
 global_grid: 224 
 resolution_input: 4
 resolution_target: 2
-column_km: 104
+column_km: 96
 crop_number: 4

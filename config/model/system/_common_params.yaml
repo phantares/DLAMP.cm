@@ -1,9 +1,7 @@
 network_cfg: ${model.module}
 layer_cfg: ${model.layer}
-global_grid: ${dataset.res.global_grid}
 resolution_input: ${dataset.res.resolution_input}
 resolution_target: ${dataset.res.resolution_target}
-column_km: ${dataset.res.column_km}
 z_input: ${dataset.var.z_input}
 z_target: ${dataset.var.z_target}
 target_var: ${dataset.var.target}

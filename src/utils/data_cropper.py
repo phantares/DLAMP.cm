@@ -6,10 +6,9 @@ from torchvision.transforms.v2 import RandomCrop, functional as Ftrans
 
 def crop_column(
     data,
-    column_top,
+    column_bottom,
     column_left,
     window_shape,
-    input_shape=None,
     output_shape=None,
     mode="bilinear",
     align_corners=False,
@@ -20,15 +19,17 @@ def crop_column(
     if has_z:
         data = rearrange(data, "b c z h w -> b (c z) h w")
 
-    B, N = column_top.shape
-    H_in, W_in = input_shape or data.shape[-2:]
+    B, N = column_bottom.shape
+    H_in, W_in = data.shape[-2:]
     H_win, W_win = window_shape
     H_out, W_out = output_shape or window_shape
 
-    dy = torch.linspace(0, H_win - 1, H_out, device=data.device)
-    dx = torch.linspace(0, W_win - 1, W_out, device=data.device)
-    YY, XX = torch.meshgrid(dy, dx, indexing="ij")
-    Y = YY[None, None, ...] + column_top[:, :, None, None]
+    yy = torch.arange(H_out[0]).to(data.dtype).to(data.device)
+    xx = torch.arange(W_out[0]).to(data.dtype).to(data.device)
+    yy = yy * ((H_win - 1) / (H_out - 1)) if H_out > 1 else yy
+    xx = xx * ((W_win - 1) / (W_out - 1)) if W_out > 1 else xx
+    YY, XX = torch.meshgrid(yy, xx, indexing="ij")
+    Y = YY[None, None, ...] + column_bottom[:, :, None, None]
     X = XX[None, None, ...] + column_left[:, :, None, None]
 
     if align_corners:
@@ -71,7 +72,7 @@ class RandomCropper:
         dtype = data.dtype
 
         datas = []
-        tops = []
+        bottoms = []
         lefts = []
 
         for i in range(data.size(0)):
@@ -79,12 +80,12 @@ class RandomCropper:
                 cropped_data, top, left = self.single_crop(data[i])
 
                 datas.append(cropped_data)
-                tops.append(top)
+                bottoms.append(top)
                 lefts.append(left)
 
         return (
             torch.stack(datas).to(dtype),
-            torch.tensor(tops, dtype=dtype, device=device),
+            torch.tensor(bottoms, dtype=dtype, device=device),
             torch.tensor(lefts, dtype=dtype, device=device),
         )
 

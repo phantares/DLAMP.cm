@@ -9,7 +9,6 @@ class UNet(nn.Module):
     def __init__(
         self,
         layer_cfg,
-        target_horizontal_shape,
         single_channel,
         upper_channel,
         out_channel,
@@ -23,8 +22,6 @@ class UNet(nn.Module):
         sigma_emb_channel=32,
     ):
         super().__init__()
-
-        self.target_shape = target_horizontal_shape
 
         c1, c2, c3 = base_channel, int(base_channel * 5 / 4), int(base_channel * 3 / 2)
 
