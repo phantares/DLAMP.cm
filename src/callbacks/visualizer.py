@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from utils import get_scaler_map
+from utils import get_scaler_map, ScalerPipe, StackedScalerPipe
 
 
 class VisualizerCallback(L.Callback):
@@ -11,6 +11,12 @@ class VisualizerCallback(L.Callback):
         super().__init__()
 
         self.scaler_map = get_scaler_map(stats_file)
+        for variable in target_var:
+            pipelines = [
+                self.scaler_map.get(f"{variable}{int(z)}", ScalerPipe(None))
+                for z in z_levels
+            ]
+            self.scaler_map[variable] = StackedScalerPipe(pipelines)
 
         self.z_levels = z_levels
         self.target_var = target_var
@@ -28,17 +34,23 @@ class VisualizerCallback(L.Callback):
                 target = target[0, 0].cpu()
                 pred = pred[0, 0].cpu()
                 for v, variable in enumerate(self.target_var):
-                    for k, lev in enumerate(self.z_levels):
-                        scaler = self.scaler_map[f"{variable}{int(lev)}"]
+                    scaler = self.scaler_map[variable]
+                    invt_tar = scaler.inverse_transform(target[v,])
+                    invt_tar = invt_tar.clamp(min=0.0)
 
-                        invt_tar = scaler.inverse_transform(target[v, k])
-                        invt_tar[invt_tar < 0.0] = 0.0
+                    invt_pred = scaler.inverse_transform(pred[v,])
+                    invt_pred = invt_pred.clamp(min=0.0)
+                    # for k, lev in enumerate(self.z_levels):
+                    #    scaler = self.scaler_map[f"{variable}{int(lev)}"]
 
-                        invt_pred = scaler.inverse_transform(pred[v, k])
-                        invt_pred[invt_pred < 0.0] = 0.0
+                    #    invt_tar = scaler.inverse_transform(target[v, k])
+                    #    invt_tar[invt_tar < 0.0] = 0.0
 
-                        target[v, k] = invt_tar
-                        pred[v, k] = invt_pred
+                    #    invt_pred = scaler.inverse_transform(pred[v, k])
+                    #    invt_pred[invt_pred < 0.0] = 0.0
+
+                    target[v,] = invt_tar
+                    pred[v,] = invt_pred
 
             self.last_val_sample = {
                 "target": target.cpu(),

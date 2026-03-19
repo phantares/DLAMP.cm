@@ -62,7 +62,7 @@ class DataDataset(Dataset):
             data_static = []
             for variable in input_static:
                 data = torch.from_numpy(f[variable][:])
-                data[data < 0.0] = 0.0
+                data = data.clamp(min=0.0)
                 data = data.unsqueeze(0).to(self.dtype)
 
                 if variable in ["longitude", "latitude"]:
@@ -98,7 +98,7 @@ class DataDataset(Dataset):
         for variable in self.single:
             data = torch.from_numpy(f[variable][t,])
             if variable not in ["u10", "v10"]:
-                data[data < 0.0] = 0.0
+                data = data.clamp(min=0.0)
             data = data.unsqueeze(0).to(self.dtype)
             data = self.transform_input(data)
             data = self.scaler_map[variable].transform(data.squeeze(0))
@@ -115,13 +115,9 @@ class DataDataset(Dataset):
                 ]
             )
             if variable not in ["u", "v", "w"]:
-                data[data < 0.0] = 0.0
+                data = data.clamp(min=0.0)
             data = self.transform_input(data.to(self.dtype))
-
-            for k, z in enumerate(self.z_input):
-                scaled_data = self.scaler_map[f"{variable}{int(z)}"].transform(data[k,])
-                data[k,] = scaled_data
-
+            data = self.scaler_map[variable].transform(data)
             data_upper.append(data)
 
         data_upper = torch.stack(data_upper)
@@ -144,10 +140,7 @@ class DataDataset(Dataset):
             data = torch.from_numpy(f[variable][t, self.z_tar])
             data[data < self.threshold[variable]] = 0.0
             data = self.transform_target(data.to(self.dtype))
-
-            for k, z in enumerate(self.z_target):
-                scaled_data = self.scaler_map[f"{variable}{int(z)}"].transform(data[k,])
-                data[k,] = scaled_data
+            data = self.scaler_map[variable].transform(data)
 
             crop_datas = []
             for n in range(self.crop_number):
