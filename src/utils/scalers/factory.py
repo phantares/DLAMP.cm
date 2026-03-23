@@ -58,9 +58,12 @@ class ScalerPipe:
 class StackedScalerPipe:
     def __init__(self, pipelines):
         self.levels = len(pipelines)
-        non_empty = [(i, p) for i, p in enumerate(pipelines) if len(p.scalers) > 0]
 
+        non_empty = [(i, p) for i, p in enumerate(pipelines) if len(p.scalers) > 0]
         self.scaled_indices = torch.tensor([i for i, _ in non_empty])
+
+        all_zero = [(i, p) for i, p in enumerate(pipelines) if len(p.scalers) == 0]
+        self.all_zero_indices = torch.tensor([i for i, _ in all_zero])
 
         scalers = []
         n_steps = len(non_empty[0][1].scalers)
@@ -89,16 +92,24 @@ class StackedScalerPipe:
 
     def transform(self, data: torch.Tensor) -> torch.Tensor:
         idx = self.scaled_indices.to(data.device)
-
         scaled_data = self.pipeline.transform(data[idx])
         data[idx] = scaled_data
+
+        if len(self.all_zero_indices) > 0:
+            idx = self.all_zero_indices.to(data.device)
+            all_zero_data = data[idx] - 1.0
+            data[idx] = all_zero_data
 
         return data
 
     def inverse_transform(self, data: torch.Tensor) -> torch.Tensor:
         idx = self.scaled_indices.to(data.device)
-
         invt_data = self.pipeline.inverse_transform(data[idx])
         data[idx] = invt_data
+
+        if len(self.all_zero_indices) > 0:
+            idx = self.all_zero_indices.to(data.device)
+            all_zero_data = data[idx] + 1.0
+            data[idx] = all_zero_data
 
         return data
