@@ -40,14 +40,6 @@ class VisualizerCallback(L.Callback):
 
                     invt_pred = scaler.inverse_transform(pred[v,])
                     invt_pred = invt_pred.clamp(min=0.0)
-                    # for k, lev in enumerate(self.z_levels):
-                    #    scaler = self.scaler_map[f"{variable}{int(lev)}"]
-
-                    #    invt_tar = scaler.inverse_transform(target[v, k])
-                    #    invt_tar[invt_tar < 0.0] = 0.0
-
-                    #    invt_pred = scaler.inverse_transform(pred[v, k])
-                    #    invt_pred[invt_pred < 0.0] = 0.0
 
                     target[v,] = invt_tar
                     pred[v,] = invt_pred
