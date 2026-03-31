@@ -96,11 +96,11 @@ class UNet(nn.Module):
     ):
 
         if self.use_film:
-            h_time = self.emb_time(time)
+            feats = self.emb_time(time)
 
             if global_token is not None and self.use_token:
                 h_glob = self.emb_glob(global_token)
-                feats = torch.cat([h_time, h_glob], dim=-1)
+                feats = torch.cat([feats, h_glob], dim=-1)
 
             if sigma is not None and self.include_sigma:
                 h_sigma = self.emb_sigma(sigma)

@@ -62,7 +62,8 @@ class DataDataset(Dataset):
             data_static = []
             for variable in input_static:
                 data = torch.from_numpy(f[variable][:])
-                data = data.clamp(min=0.0)
+                if variable not in ["longitude", "latitude"]:
+                    data = data.clamp(min=0.0)
                 data = data.unsqueeze(0).to(self.dtype)
 
                 if variable in ["longitude", "latitude"]:
@@ -75,7 +76,21 @@ class DataDataset(Dataset):
 
             pressure = f["pressure"][:]
 
+            try:
+                index_lon = input_static.index("longitude")
+                lon = self.scaler_map["longitude"].inverse_transform(
+                    data_static[index_lon]
+                )
+
+            except ValueError:
+                lon = torch.from_numpy(f["longitude"][:])
+                lon = lon.clamp(min=0.0)
+                lon = lon.unsqueeze(0).to(self.dtype)
+                lon = self.transform_grid(lon)
+                lon = lon.squeeze(0)
+
         self.data_static = torch.stack(data_static)
+        self.lon = lon.numpy()
 
         self.z_up = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_input)
         self.z_tar = len(pressure) - 1 - np.searchsorted(pressure[::-1], self.z_target)
@@ -86,7 +101,7 @@ class DataDataset(Dataset):
     def __getitem__(self, index: int):
         file = self.indexes[index]["file"]
         time = self.indexes[index]["time"]
-        data_time = encode_time(time, dtype=self.dtype)
+        data_time = encode_time(self.lon, time, dtype=self.dtype)
 
         t = self.indexes[index]["index"]
         data_single = []
