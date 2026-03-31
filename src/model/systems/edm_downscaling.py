@@ -71,7 +71,7 @@ class EDMDownscaling(L.LightningModule):
                 example_full_grid,
                 example_full_grid,
             ),
-            "time": torch.randn(example_batch, 4),
+            "time": torch.randn(example_batch, 4, example_full_grid, example_full_grid),
             "noise": torch.randn(
                 example_batch,
                 example_crop,
@@ -108,7 +108,6 @@ class EDMDownscaling(L.LightningModule):
 
         noise = rearrange(noise, "b n c z h w -> (b n) c z h w")
         sigma = rearrange(sigma, "b n 1 1 1 1 -> (b n) 1 1 1 1")
-        time = repeat(time, "b c -> (b n) c", n=crop_number)
 
         c_skip = self.hparams.sigma_data**2 / (sigma**2 + self.hparams.sigma_data**2)
         c_out = (
@@ -123,6 +122,17 @@ class EDMDownscaling(L.LightningModule):
         if self.use_global:
             global_token = self.global_encoder(single, upper)
             global_token = repeat(global_token, "b c -> (b n) c", n=crop_number)
+
+        time = crop_column(
+            time,
+            column_bottom,
+            column_left,
+            (column_grid, column_grid),
+            output_shape=(target_grid, target_grid),
+            mode="nearest",
+            align_corners=True,
+        )
+        time = rearrange(time, "b n c h w -> (b n) c h w")
 
         column_single = crop_column(
             single,

@@ -66,7 +66,7 @@ class StandardDownscaling(L.LightningModule):
                 example_full_grid,
                 example_full_grid,
             ),
-            "time": torch.randn(example_batch, 4),
+            "time": torch.randn(example_batch, 4, example_full_grid, example_full_grid),
             "column_km": torch.tensor([example_column_km]),
             "column_bottom": torch.randn(example_batch, example_crop),
             "column_left": torch.randn(example_batch, example_crop),
@@ -82,12 +82,23 @@ class StandardDownscaling(L.LightningModule):
         column_grid = torch.round(column_km // self.hparams.resolution_input)
         target_grid = torch.round(column_km // self.hparams.resolution_target)
 
-        time = repeat(time, "b c -> (b n) c", n=crop_number)
+        # time = repeat(time, "b c -> (b n) c", n=crop_number)
 
         global_token = None
         if self.use_global:
             global_token = self.global_encoder(single, upper)
             global_token = repeat(global_token, "b c -> (b n) c", n=crop_number)
+
+        time = crop_column(
+            time,
+            column_bottom,
+            column_left,
+            (column_grid, column_grid),
+            output_shape=(target_grid, target_grid),
+            mode="nearest",
+            align_corners=True,
+        )
+        time = rearrange(time, "b n c h w -> (b n) c h w")
 
         column_single = crop_column(
             single,
