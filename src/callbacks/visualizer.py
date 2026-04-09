@@ -3,20 +3,16 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from utils import get_scaler_map, ScalerPipe, StackedScalerPipe
+from utils import get_scaler_map
 
 
 class VisualizerCallback(L.Callback):
     def __init__(self, stats_file, z_levels, target_var, log_every_n_epochs=1):
         super().__init__()
 
-        self.scaler_map = get_scaler_map(stats_file)
-        for variable in target_var:
-            pipelines = [
-                self.scaler_map.get(f"{variable}{int(z)}", ScalerPipe(None))
-                for z in z_levels
-            ]
-            self.scaler_map[variable] = StackedScalerPipe(pipelines)
+        self.scaler_map = get_scaler_map(
+            stats_file, **{var: z_levels for var in target_var}
+        )
 
         self.z_levels = z_levels
         self.target_var = target_var
