@@ -3,7 +3,7 @@ defaults:
   - dataset/split: rwrf_2022
   - dataset/var : cm
   - dataset/res: 4km
-  - model/layer: resnet
+  - model/layer: convnext 
   - model/module: default
   - model/system: standard 
   - callbacks: default

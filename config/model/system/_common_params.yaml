@@ -5,3 +5,4 @@ resolution_target: ${dataset.res.resolution_target}
 z_input: ${dataset.var.z_input}
 z_target: ${dataset.var.z_target}
 target_var: ${dataset.var.target}
+use_mask: True

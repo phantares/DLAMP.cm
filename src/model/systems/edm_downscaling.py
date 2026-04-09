@@ -26,6 +26,7 @@ class EDMDownscaling(L.LightningModule):
         sigma_data,
         sigma_min=None,
         sigma_max=None,
+        use_mask=False,
     ):
         super().__init__()
 
@@ -53,6 +54,7 @@ class EDMDownscaling(L.LightningModule):
             out_channel=output_channel,
             use_token=self.use_global,
             include_sigma=True,
+            use_mask=use_mask,
         )
 
         example_batch = 2
@@ -162,7 +164,7 @@ class EDMDownscaling(L.LightningModule):
         input_upper = torch.cat([column_upper_all, noise * c_in], dim=1)
 
         if shuffle:
-            indices = torch.randperm(input_upper.size(0))
+            indices = torch.randperm(input_upper.size(0), device=column_single.device)
         else:
             indices = torch.arange(input_upper.size(0), device=column_single.device)
 
@@ -176,8 +178,21 @@ class EDMDownscaling(L.LightningModule):
             sigma=c_noise[indices, ...].flatten(1),
         )
 
-        output = c_skip * noise + c_out * F_x
-        output = rearrange(output, "(b n) c z h w -> b n c z h w", n=crop_number)
+        output = {k: v for k, v in F_x.items()}
+        output["regress"] = (
+            c_skip[indices, ...] * noise[indices, ...]
+            + c_out[indices, ...] * F_x["regress"]
+        )
+
+        if shuffle:
+            inv_indices = torch.empty_like(indices)
+            inv_indices[indices] = torch.arange(len(indices), device=indices.device)
+
+            for k, v in output.items():
+                output[k] = v[inv_indices, ...]
+
+        for k, v in output.items():
+            output[k] = rearrange(v, "(b n) c z h w -> b n c z h w", n=crop_number)
 
         return output
 
@@ -195,18 +210,18 @@ class EDMDownscaling(L.LightningModule):
         weight = (sigma**2 + self.hparams.sigma_data**2) / (
             sigma * self.hparams.sigma_data
         ) ** 2
-        noise = torch.randn_like(target) * sigma
+        noise = torch.randn_like(target["regress"]) * sigma
         column_km = (
-            torch.tensor([target.shape[-1] * self.hparams.resolution_target])
-            .to(target.dtype)
-            .to(target.device)
+            torch.tensor([target["regress"].shape[-1] * self.hparams.resolution_target])
+            .to(target["regress"].dtype)
+            .to(target["regress"].device)
         )
 
         output = self(
             single=single,
             upper=upper,
             time=time,
-            noise=target + noise,
+            noise=target["regress"] + noise,
             sigma=sigma,
             column_km=column_km,
             column_bottom=column_bottom,
@@ -214,8 +229,36 @@ class EDMDownscaling(L.LightningModule):
             shuffle=shuffle,
         )
 
-        loss_var = nn.MSELoss(reduction="none")(output, target).mean(dim=(0, 1, -1, -2))
-        loss = torch.mean(weight * loss_var)
+        loss = {}
+        if self.hparams.use_mask:
+            loss["mask"] = nn.BCEWithLogitsLoss()(output["mask"], target["mask"])
+
+            mask_target = target["mask"]
+            raw_loss = weight * (output["regress"] - target["regress"]) ** 2
+            masked_loss = raw_loss * mask_target
+
+            loss_sum = rearrange(masked_loss, "b n c z h w -> b n (c z h w)").sum(
+                dim=-1
+            )
+            mask_sum = rearrange(mask_target, "b n c z h w -> b n (c z h w)").sum(
+                dim=-1
+            )
+
+            loss["regress"] = torch.mean(loss_sum / (mask_sum + 1e-10))
+
+            loss["total"] = loss["mask"] + loss["regress"]
+
+            mask_output = (output["mask"] > 0).float()
+            output["regress"] = output["regress"] * mask_output
+
+        else:
+            loss["total"] = torch.mean(
+                weight * (output["regress"] - target["regress"]) ** 2
+            )
+
+        loss_var = nn.MSELoss(reduction="none")(
+            output["regress"], target["regress"]
+        ).mean(dim=(0, 1, -1, -2))
 
         return loss, loss_var
 
@@ -223,10 +266,15 @@ class EDMDownscaling(L.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
 
     def training_step(self, batch, batch_idx):
-        single, upper, time, target, column_bottom, column_left = batch
+        single, upper, time, target_regress, column_bottom, column_left = batch
+
+        target = {"regress": target_regress}
+        if self.hparams.use_mask:
+            target["mask"] = (target_regress > 0).float()
 
         rnd_normal = torch.randn(
-            [target.shape[0], target.shape[1], 1, 1, 1, 1], device=target.device
+            [target_regress.shape[0], target_regress.shape[1], 1, 1, 1, 1],
+            device=target_regress.device,
         )
         sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
         sigma = sigma.clamp(min=self.hparams.sigma_min, max=self.hparams.sigma_max)
@@ -239,15 +287,21 @@ class EDMDownscaling(L.LightningModule):
             loss, loss_var, self.hparams.target_var, self.hparams.z_target, "train"
         )
 
-        return loss
+        return loss["total"]
 
     def validation_step(self, batch, batch_idx):
-        single, upper, time, target, column_bottom, column_left = batch
+        single, upper, time, target_regress, column_bottom, column_left = batch
 
-        v_gen = torch.Generator(device=target.device).manual_seed(42 + batch_idx)
+        target = {"regress": target_regress}
+        if self.hparams.use_mask:
+            target["mask"] = (target_regress > 0).float()
+
+        v_gen = torch.Generator(device=target_regress.device).manual_seed(
+            42 + batch_idx
+        )
         rnd_normal = torch.randn(
-            [target.shape[0], target.shape[1], 1, 1, 1, 1],
-            device=target.device,
+            [target_regress.shape[0], target_regress.shape[1], 1, 1, 1, 1],
+            device=target_regress.device,
             generator=v_gen,
         )
         sigma = (rnd_normal * self.hparams.P_std + self.hparams.P_mean).exp()
@@ -261,12 +315,30 @@ class EDMDownscaling(L.LightningModule):
             loss, loss_var, self.hparams.target_var, self.hparams.z_target, "val"
         )
 
-        return loss
+        return loss["total"]
 
     def _log_loss_var(self, loss, loss_var, variable_name, level, stage):
+        if self.hparams.use_mask:
+            self.log(
+                f"mask_{stage}",
+                loss["mask"],
+                on_step=stage != "test",
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log(
+                f"regress_{stage}",
+                loss["regress"],
+                on_step=stage != "test",
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
+
         self.log(
             f"total_{stage}",
-            loss,
+            loss["total"],
             on_step=stage != "test",
             on_epoch=True,
             prog_bar=True,
@@ -302,7 +374,7 @@ class EDMDownscaling(L.LightningModule):
             .to(device=target.device)
         )
 
-        return self(
+        output = self(
             single=single[0:1],
             upper=upper[0:1],
             time=time[0:1],
@@ -312,3 +384,9 @@ class EDMDownscaling(L.LightningModule):
             column_bottom=column_bottom[0:1, 0:1],
             column_left=column_left[0:1, 0:1],
         )
+
+        if self.hparams.use_mask:
+            mask_output = (output["mask"] > 0).float()
+            output["regress"] = output["regress"] * mask_output
+
+        return output["regress"]
