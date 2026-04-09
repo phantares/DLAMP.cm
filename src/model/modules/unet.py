@@ -13,6 +13,7 @@ class UNet(nn.Module):
         upper_channel,
         out_channel,
         base_channel=128,
+        use_mask=False,
         use_film=False,
         use_token=False,
         token_channel=768,
@@ -84,7 +85,14 @@ class UNet(nn.Module):
         self.dec1_reduce = nn.Conv3d(c1 + c1, c1, kernel_size=1)
         self.dec1 = self.layer_factory(dim=c1, film_channel=film_channel)
 
-        self.output = nn.Conv3d(c1, out_channel, kernel_size=1)
+        self.use_mask = use_mask
+        regress_channel = c1
+        if use_mask:
+            self.mask = nn.Sequential(
+                nn.Conv3d(c1, out_channel, kernel_size=1), nn.Sigmoid()
+            )
+            regress_channel = regress_channel + out_channel
+        self.regress = nn.Conv3d(regress_channel, out_channel, kernel_size=1)
 
     def forward(
         self,
@@ -136,6 +144,13 @@ class UNet(nn.Module):
         u1 = self.dec1_reduce(u1)
         u1 = self.dec1(u1, film_base)
 
-        out = self.output(u1)  # (B,Cout,Z+1,H,W)
+        out = {}
+        if self.use_mask:
+            mask = self.mask(u1)
+            out["mask"] = mask[:, :, 1:, :, :]
+            u1 = torch.cat([u1, mask], dim=1)
 
-        return out[:, :, 1:, :, :]
+        regress = self.regress(u1)  # (B,Cout,Z+1,H,W)
+        out["regress"] = regress[:, :, 1:, :, :]
+
+        return out

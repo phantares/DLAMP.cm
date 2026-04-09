@@ -21,6 +21,7 @@ class StandardDownscaling(L.LightningModule):
         z_input,
         z_target,
         target_var,
+        use_mask=False,
     ):
         super().__init__()
 
@@ -49,6 +50,7 @@ class StandardDownscaling(L.LightningModule):
             upper_channel=upper_channel,
             out_channel=output_channel,
             use_token=self.use_global,
+            use_mask=use_mask,
         )
 
         example_batch = 2
@@ -81,8 +83,6 @@ class StandardDownscaling(L.LightningModule):
         crop_number = column_bottom.shape[1]
         column_grid = torch.round(column_km // self.hparams.resolution_input)
         target_grid = torch.round(column_km // self.hparams.resolution_target)
-
-        # time = repeat(time, "b c -> (b n) c", n=crop_number)
 
         global_token = None
         if self.use_global:
@@ -127,7 +127,7 @@ class StandardDownscaling(L.LightningModule):
         )
 
         if shuffle:
-            indices = torch.randperm(input_upper.size(0))
+            indices = torch.randperm(input_upper.size(0), device=column_single.device)
         else:
             indices = torch.arange(input_upper.size(0), device=column_single.device)
 
@@ -140,7 +140,15 @@ class StandardDownscaling(L.LightningModule):
             ),
         )
 
-        output = rearrange(output, "(b n) c z h w -> b n c z h w", n=crop_number)
+        if shuffle:
+            inv_indices = torch.empty_like(indices)
+            inv_indices[indices] = torch.arange(len(indices), device=indices.device)
+
+            for k, v in output.items():
+                output[k] = v[inv_indices, ...]
+
+        for k, v in output.items():
+            output[k] = rearrange(v, "(b n) c z h w -> b n c z h w", n=crop_number)
 
         return output
 
@@ -148,9 +156,9 @@ class StandardDownscaling(L.LightningModule):
         self, single, upper, time, target, column_bottom, column_left, shuffle=False
     ):
         column_km = (
-            torch.tensor([target.shape[-1] * self.hparams.resolution_target])
-            .to(target.dtype)
-            .to(target.device)
+            torch.tensor([target["regress"].shape[-1] * self.hparams.resolution_target])
+            .to(target["regress"].dtype)
+            .to(target["regress"].device)
         )
 
         output = self(
@@ -163,8 +171,34 @@ class StandardDownscaling(L.LightningModule):
             shuffle=shuffle,
         )
 
-        loss_var = nn.MSELoss(reduction="none")(output, target).mean(dim=(0, 1, -1, -2))
-        loss = torch.mean(loss_var)
+        loss = {}
+        if self.hparams.use_mask:
+            loss["mask"] = nn.BCEWithLogitsLoss()(output["mask"], target["mask"])
+
+            mask_target = target["mask"]
+            raw_loss = (output["regress"] - target["regress"]) ** 2
+            masked_loss = raw_loss * mask_target
+
+            loss_sum = rearrange(masked_loss, "b n c z h w -> b n (c z h w)").sum(
+                dim=-1
+            )
+            mask_sum = rearrange(mask_target, "b n c z h w -> b n (c z h w)").sum(
+                dim=-1
+            )
+
+            loss["regress"] = torch.mean(loss_sum / (mask_sum + 1e-10))
+
+            loss["total"] = loss["mask"] + loss["regress"]
+
+            mask_output = (output["mask"] > 0).float()
+            output["regress"] = output["regress"] * mask_output
+
+        else:
+            loss["total"] = nn.MSELoss()(output["regress"], target["regress"])
+
+        loss_var = nn.MSELoss(reduction="none")(
+            output["regress"], target["regress"]
+        ).mean(dim=(0, 1, -1, -2))
 
         return loss, loss_var, output
 
@@ -172,7 +206,11 @@ class StandardDownscaling(L.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=1e-5)
 
     def training_step(self, batch, batch_idx):
-        single, upper, time, target, column_bottom, column_left = batch
+        single, upper, time, target_regress, column_bottom, column_left = batch
+
+        target = {"regress": target_regress}
+        if self.hparams.use_mask:
+            target["mask"] = (target_regress > 0).float()
 
         loss, loss_var, _ = self.general_step(
             single, upper, time, target, column_bottom, column_left, shuffle=True
@@ -182,10 +220,14 @@ class StandardDownscaling(L.LightningModule):
             loss, loss_var, self.hparams.target_var, self.hparams.z_target, "train"
         )
 
-        return loss
+        return loss["total"]
 
     def validation_step(self, batch, batch_idx):
-        single, upper, time, target, column_bottom, column_left = batch
+        single, upper, time, target_regress, column_bottom, column_left = batch
+
+        target = {"regress": target_regress}
+        if self.hparams.use_mask:
+            target["mask"] = (target_regress > 0).float()
 
         loss, loss_var, _ = self.general_step(
             single, upper, time, target, column_bottom, column_left
@@ -195,26 +237,53 @@ class StandardDownscaling(L.LightningModule):
             loss, loss_var, self.hparams.target_var, self.hparams.z_target, "val"
         )
 
-        return loss
+        return loss["total"]
 
     def test_step(self, batch, batch_idx):
-        single, upper, time, target, column_bottom, column_left = batch
+        single, upper, time, target_regress, column_bottom, column_left = batch
+
+        target = {"regress": target_regress}
+        if self.hparams.use_mask:
+            target["mask"] = (target_regress > 0).float()
 
         loss, loss_var, output = self.general_step(
             single, upper, time, target, column_bottom, column_left
         )
 
-        self.test_targets.append(target.detach().cpu())
-        self.test_outputs.append(output.detach().cpu())
+        output = {k: v.detach().cpu() for k, v in output.items()}
+        if self.hparams.use_mask:
+            mask_output = (output["mask"] > 0).float()
+            output["regress"] = output["regress"] * mask_output
+
+        self.test_targets.append(target_regress.detach().cpu())
+        self.test_outputs.append(output["regress"])
 
         self._log_loss_var(
             loss, loss_var, self.hparams.target_var, self.hparams.z_target, "test"
         )
 
     def _log_loss_var(self, loss, loss_var, variable_name, level, stage):
+        if self.hparams.use_mask:
+            self.log(
+                f"mask_{stage}",
+                loss["mask"],
+                on_step=stage != "test",
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log(
+                f"regress_{stage}",
+                loss["regress"],
+                on_step=stage != "test",
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
+
         self.log(
             f"total_{stage}",
-            loss,
+            loss["total"],
             on_step=stage != "test",
             on_epoch=True,
             prog_bar=True,
@@ -239,7 +308,7 @@ class StandardDownscaling(L.LightningModule):
             .to(device=target.device)
         )
 
-        return self(
+        output = self(
             single=single[0:1],
             upper=upper[0:1],
             time=time[0:1],
@@ -247,3 +316,9 @@ class StandardDownscaling(L.LightningModule):
             column_bottom=column_bottom[0:1, 0:1],
             column_left=column_left[0:1, 0:1],
         )
+
+        if self.hparams.use_mask:
+            mask_output = (output["mask"] > 0).float()
+            output["regress"] = output["regress"] * mask_output
+
+        return output["regress"]
