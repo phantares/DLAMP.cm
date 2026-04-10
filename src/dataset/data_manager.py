@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from . import DataIndexer, DataDataset
-from utils import get_scaler_map, ScalerPipe, StackedScalerPipe
+from utils import get_scaler_map
 
 
 class DataManager(L.LightningDataModule):
@@ -15,21 +15,11 @@ class DataManager(L.LightningDataModule):
 
     def setup(self, stage: str):
         stats_file = self.hparams.res.stats_file
-        scaler_map = get_scaler_map(stats_file)
-
-        for variable in self.hparams.var.input_upper:
-            pipelines = [
-                scaler_map.get(f"{variable}{int(z)}", ScalerPipe(None))
-                for z in self.hparams.var.z_input
-            ]
-            scaler_map[variable] = StackedScalerPipe(pipelines)
-
-        for variable in self.hparams.var.target:
-            pipelines = [
-                scaler_map.get(f"{variable}{int(z)}", ScalerPipe(None))
-                for z in self.hparams.var.z_target
-            ]
-            scaler_map[variable] = StackedScalerPipe(pipelines)
+        scaler_map = get_scaler_map(
+            stats_file,
+            **{var: self.hparams.var.z_input for var in self.hparams.var.input_upper},
+            **{var: self.hparams.var.z_target for var in self.hparams.var.target},
+        )
 
         res_config = {k: v for k, v in self.hparams.res.items() if k != "stats_file"}
 

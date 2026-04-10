@@ -53,21 +53,20 @@ def main(exp_name, wandb_id=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     test_targets = torch.cat(model.test_targets).to(device)
     test_outputs = torch.cat(model.test_outputs).to(device)
-    scaler_map = get_scaler_map(cfg.dataset.res.stats_file)
+
+    scaler_map = get_scaler_map(
+        cfg.dataset.res.stats_file,
+        {var: cfg.dataset.var.z_target for var in cfg.dataset.var.target},
+    )
 
     for c, variable in enumerate(cfg.dataset.var.target):
-        for k, z in enumerate(cfg.dataset.var.z_target):
-            scaler = scaler_map[f"{variable}{int(z)}"]
+        scaler = scaler_map[variable]
 
-            invt_tar = scaler.inverse_transform(test_targets[:, :, c, k, ...]).clamp(
-                min=0
-            )
-            invt_pred = scaler.inverse_transform(test_outputs[:, :, c, k, ...]).clamp(
-                min=0
-            )
+        invt_tar = scaler.inverse_transform(test_targets[:, :, c, ...]).clamp(min=0)
+        invt_pred = scaler.inverse_transform(test_outputs[:, :, c, ...]).clamp(min=0)
 
-            test_targets[:, :, c, k, ...] = invt_tar
-            test_outputs[:, :, c, k, ...] = invt_pred
+        test_targets[:, :, c, ...] = invt_tar
+        test_outputs[:, :, c, ...] = invt_pred
 
     test_targets = test_targets.cpu().numpy().reshape(-1, *test_targets.shape[2:])
     test_outputs = test_outputs.cpu().numpy().reshape(-1, *test_outputs.shape[2:])
