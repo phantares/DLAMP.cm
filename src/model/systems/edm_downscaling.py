@@ -27,6 +27,7 @@ class EDMDownscaling(L.LightningModule):
         sigma_min=None,
         sigma_max=None,
         use_mask=False,
+        loss_weight={},
     ):
         super().__init__()
 
@@ -132,7 +133,6 @@ class EDMDownscaling(L.LightningModule):
             (column_grid, column_grid),
             output_shape=(target_grid, target_grid),
             mode="nearest",
-            align_corners=True,
         )
         time = rearrange(time, "b n c h w -> (b n) c h w")
 
@@ -143,7 +143,6 @@ class EDMDownscaling(L.LightningModule):
             (column_grid, column_grid),
             output_shape=(target_grid, target_grid),
             mode="nearest",
-            align_corners=True,
         )
         column_single = rearrange(column_single, "b n c h w -> (b n) c h w")
 
@@ -154,7 +153,6 @@ class EDMDownscaling(L.LightningModule):
             (column_grid, column_grid),
             output_shape=(target_grid, target_grid),
             mode="nearest",
-            align_corners=True,
         )
         column_upper = rearrange(column_upper, "b n c z h w -> (b n) c z h w")
 
@@ -246,19 +244,24 @@ class EDMDownscaling(L.LightningModule):
 
             loss["regress"] = torch.mean(loss_sum / (mask_sum + 1e-10))
 
-            loss["total"] = loss["mask"] + loss["regress"]
+            weight_mask = self.hparams.loss_weight.get("mask", 1.0)
+            weight_regress = self.hparams.loss_weight.get("regress", 1.0)
+            loss["total"] = (
+                weight_mask * loss["mask"] + weight_regress * loss["regress"]
+            )
 
             mask_output = (output["mask"] > 0).float()
-            output["regress"] = output["regress"] * mask_output
+            output_result = output["regress"] * mask_output
 
         else:
             loss["total"] = torch.mean(
                 weight * (output["regress"] - target["regress"]) ** 2
             )
+            output_result = output["regress"]
 
-        loss_var = nn.MSELoss(reduction="none")(
-            output["regress"], target["regress"]
-        ).mean(dim=(0, 1, -1, -2))
+        loss_var = nn.MSELoss(reduction="none")(output_result, target["regress"]).mean(
+            dim=(0, 1, -1, -2)
+        )
 
         return loss, loss_var
 
