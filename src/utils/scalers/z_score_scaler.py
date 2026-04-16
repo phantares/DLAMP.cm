@@ -12,7 +12,9 @@ class ZScoreScaler:
 
     def inverse_transform(self, data):
         if self.mean is not None and self.std is not None:
+            device = data.device
+
             if self.std != 0:
-                data = data * self.std + self.mean
+                data = data * self.std.to(device) + self.mean.to(device)
 
         return data

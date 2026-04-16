@@ -17,4 +17,6 @@ class MinMaxScaler:
         if self.range is None:
             return data
 
-        return (data + 1.0) / 2.0 * self.range + self.min
+        device = data.device
+
+        return (data + 1.0) / 2.0 * self.range.to(device) + self.min.to(device)

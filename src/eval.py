@@ -56,7 +56,7 @@ def main(exp_name, wandb_id=None):
 
     scaler_map = get_scaler_map(
         cfg.dataset.res.stats_file,
-        {var: cfg.dataset.var.z_target for var in cfg.dataset.var.target},
+        **{var: cfg.dataset.var.z_target for var in cfg.dataset.var.target},
     )
 
     for c, variable in enumerate(cfg.dataset.var.target):
