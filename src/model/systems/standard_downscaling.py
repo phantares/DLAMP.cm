@@ -192,7 +192,7 @@ class StandardDownscaling(L.LightningModule):
                 weight_mask * loss["mask"] + weight_regress * loss["regress"]
             )
 
-            mask_output = (output["mask"] > 0).float()
+            mask_output = (output["mask"] > 0.5).float()
             output_result = output["regress"] * mask_output
 
         else:
@@ -255,7 +255,7 @@ class StandardDownscaling(L.LightningModule):
 
         output = {k: v.detach().cpu() for k, v in output.items()}
         if self.hparams.use_mask:
-            mask_output = (output["mask"] > 0).float()
+            mask_output = (output["mask"] > 0.5).float()
             output["regress"] = output["regress"] * mask_output
 
         self.test_targets.append(target_regress.detach().cpu())
@@ -321,7 +321,7 @@ class StandardDownscaling(L.LightningModule):
         )
 
         if self.hparams.use_mask:
-            mask_output = (output["mask"] > 0).float()
+            mask_output = (output["mask"] > 0.5).float()
             output["regress"] = output["regress"] * mask_output
 
         return output["regress"]

@@ -19,8 +19,9 @@ class LogScaler:
         if self.ref is None:
             return data
 
+        device = data.device
+
         if torch.is_tensor(data):
-            return (torch.pow(10, data) - 1) * self.ref
+            return (torch.pow(10, data) - 1) * self.ref.to(device)
         else:
             return (np.power(10, data) - 1) * self.ref
-
