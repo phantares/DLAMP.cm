@@ -40,7 +40,10 @@ def main(exp_name, wandb_id=None):
     model = model_class.load_from_checkpoint(checkpoint_path, column_km=column_km)
     model.to(dtype)
 
-    logger = hydra.utils.instantiate(cfg.logger, id=wandb_id, resume="allow")
+    logger = hydra.utils.instantiate(
+        cfg.logger,
+        **({"id": wandb_id, "resume": "allow"} if wandb_id else {"mode": "disabled"}),
+    )
 
     trainer = Trainer(
         logger=logger,
@@ -50,9 +53,7 @@ def main(exp_name, wandb_id=None):
 
     trainer.test(model, datamodule)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    test_targets = torch.cat(model.test_targets).to(device)
-    test_outputs = torch.cat(model.test_outputs).to(device)
+    test_outputs = {k: torch.cat(v).to("cpu") for k, v in model.test_outputs.items()}
 
     scaler_map = get_scaler_map(
         cfg.dataset.res.stats_file,
@@ -60,16 +61,17 @@ def main(exp_name, wandb_id=None):
     )
 
     for c, variable in enumerate(cfg.dataset.var.target):
-        scaler = scaler_map[variable]
+        invt_pred = (
+            scaler_map[variable]
+            .inverse_transform(test_outputs["regress"][:, :, c, ...])
+            .clamp(min=0)
+        )
 
-        invt_tar = scaler.inverse_transform(test_targets[:, :, c, ...]).clamp(min=0)
-        invt_pred = scaler.inverse_transform(test_outputs[:, :, c, ...]).clamp(min=0)
+        test_outputs["regress"][:, :, c, ...] = invt_pred
 
-        test_targets[:, :, c, ...] = invt_tar
-        test_outputs[:, :, c, ...] = invt_pred
-
-    test_targets = test_targets.cpu().numpy().reshape(-1, *test_targets.shape[2:])
-    test_outputs = test_outputs.cpu().numpy().reshape(-1, *test_outputs.shape[2:])
+    test_outputs = {
+        k: v.cpu().numpy().reshape(-1, *v.shape[2:]) for k, v in test_outputs.items()
+    }
 
     test_indexes = DataIndexer(
         Path(env.get("INPUT_DIR")), **cfg.dataset.split
@@ -95,6 +97,27 @@ def main(exp_name, wandb_id=None):
             transformed_coords = transform_grid(torch.as_tensor(coords)).numpy()
             new_lat, new_lon = transformed_coords[0], transformed_coords[1]
 
+            pressure = f["pressure"][:]
+            z_tar = (
+                len(pressure)
+                - 1
+                - np.searchsorted(pressure[::-1], cfg.dataset.var.z_target)
+            )
+
+            test_targets = []
+            for c, variable in enumerate(cfg.dataset.var.target):
+                data = f[variable][indices,]
+                data = torch.from_numpy(
+                    data[
+                        :,
+                        z_tar,
+                    ]
+                )
+                data[data < cfg.dataset.var.threshold[variable]] = 0.0
+                data = transform_grid(data).numpy()
+                test_targets.append(data)
+        test_targets = np.stack(test_targets, axis=1)
+
         new_coords = {
             "time": new_time,
             "pressure": cfg.dataset.var.z_target,
@@ -110,8 +133,11 @@ def main(exp_name, wandb_id=None):
             input_file,
             output_file,
             new_coords,
-            test_outputs[current_index : current_index + n_samples,],
-            test_targets[current_index : current_index + n_samples],
+            {
+                k: v[current_index : current_index + n_samples]
+                for k, v in test_outputs.items()
+            },
+            test_targets,
             cfg.dataset.var.target,
         )
 

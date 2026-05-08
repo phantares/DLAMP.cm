@@ -30,9 +30,17 @@ def write_file(
 
         for i, name in enumerate(var_names):
             p_ds = pred_grp.create_dataset(
-                name, data=predictions[:, i, ...], compression="gzip"
+                name, data=predictions["regress"][:, i, ...], compression="gzip"
             )
             attach_dim(p_ds, *dims)
+
+            if "mask" in predictions.keys():
+                m_ds = pred_grp.create_dataset(
+                    f"{name}_mask",
+                    data=predictions["mask"][:, i, ...],
+                    compression="gzip",
+                )
+                attach_dim(m_ds, *dims)
 
             t_ds = targ_grp.create_dataset(
                 name, data=targets[:, i, ...], compression="gzip"
