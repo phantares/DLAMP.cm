@@ -31,6 +31,11 @@ class EDMDownscaling(L.LightningModule):
     ):
         super().__init__()
 
+        if isinstance(network_cfg, dict):
+            network_cfg = OmegaConf.create(network_cfg)
+        if isinstance(layer_cfg, dict):
+            layer_cfg = OmegaConf.create(layer_cfg)
+
         network_cfg = OmegaConf.to_container(network_cfg, resolve=True)
         layer_cfg = OmegaConf.to_container(layer_cfg, resolve=True)
 

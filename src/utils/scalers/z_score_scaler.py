@@ -15,6 +15,6 @@ class ZScoreScaler:
             device = data.device
 
             if self.std != 0:
-                data = data * self.std.to(device) + self.mean.to(device)
+                data = data * self.std + self.mean
 
         return data

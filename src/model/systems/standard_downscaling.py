@@ -75,8 +75,7 @@ class StandardDownscaling(L.LightningModule):
             "column_left": torch.randn(example_batch, example_crop),
         }
 
-        self.test_targets = []
-        self.test_outputs = []
+        self.test_outputs = {"regress": []} | ({"mask": []} if use_mask else {})
 
     def forward(
         self, single, upper, time, column_km, column_bottom, column_left, shuffle=False
@@ -254,12 +253,7 @@ class StandardDownscaling(L.LightningModule):
         )
 
         output = {k: v.detach().cpu() for k, v in output.items()}
-        if self.hparams.use_mask:
-            mask_output = (output["mask"] > 0.5).float()
-            output["regress"] = output["regress"] * mask_output
-
-        self.test_targets.append(target_regress.detach().cpu())
-        self.test_outputs.append(output["regress"])
+        [self.test_outputs[k].append(v) for k, v in output.items()]
 
         self._log_loss_var(
             loss, loss_var, self.hparams.target_var, self.hparams.z_target, "test"
