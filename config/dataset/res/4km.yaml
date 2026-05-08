@@ -1,4 +1,4 @@
-stats_file: stats_4km.json
+stats_file: stats_4km_glb.json
 global_grid: 224 
 resolution_input: 4
 resolution_target: 2
