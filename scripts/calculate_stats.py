@@ -7,7 +7,6 @@ import json
 import torch
 from torchvision.transforms.v2 import Resize
 
-
 variables_static = ["terrain", "latitude", "longitude"]
 variables_single = ["sst", "psfc", "t2m", "q2m", "u10", "v10", "olr", "sw"]
 variables_upper = ["z", "u", "v", "w", "t", "qv"]
@@ -203,7 +202,7 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
 
             results[f"{variable}{int(p)}"] = stats
 
-    output_file = Path(output_dir or env.get("STATS_DIR"), f"qc_{resolution}km.json")
+    output_file = Path(output_dir or env.get("STATS_DIR"), f"stats_{resolution}km.json")
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2)
 

@@ -150,7 +150,15 @@ class StandardDownscaling(L.LightningModule):
         return output
 
     def general_step(
-        self, single, upper, time, target, column_bottom, column_left, shuffle=False
+        self,
+        single,
+        upper,
+        time,
+        target,
+        column_bottom,
+        column_left,
+        shuffle=False,
+        compute_loss_var=True,
     ):
         column_km = (
             torch.tensor([target["regress"].shape[-1] * self.hparams.resolution_target])
@@ -198,9 +206,12 @@ class StandardDownscaling(L.LightningModule):
             loss["total"] = nn.MSELoss()(output["regress"], target["regress"])
             output_result = output["regress"]
 
-        loss_var = nn.MSELoss(reduction="none")(output_result, target["regress"]).mean(
-            dim=(0, 1, -1, -2)
-        )
+        if compute_loss_var:
+            loss_var = nn.MSELoss(reduction="none")(
+                output_result, target["regress"]
+            ).mean(dim=(0, 1, -1, -2))
+        else:
+            loss_var = None
 
         return loss, loss_var, output
 
@@ -248,23 +259,35 @@ class StandardDownscaling(L.LightningModule):
         if self.hparams.use_mask:
             target["mask"] = (target_regress > 0).float()
 
-        loss, loss_var, output = self.general_step(
-            single, upper, time, target, column_bottom, column_left
+        loss, _, output = self.general_step(
+            single,
+            upper,
+            time,
+            target,
+            column_bottom,
+            column_left,
+            compute_loss_var=False,
+        )
+
+        loss = {k: v.detach() for k, v in loss.items()}
+        self.log(
+            f"total_test",
+            loss["total"].item(),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
         )
 
         output = {k: v.detach().cpu() for k, v in output.items()}
         [self.test_outputs[k].append(v) for k, v in output.items()]
-
-        self._log_loss_var(
-            loss, loss_var, self.hparams.target_var, self.hparams.z_target, "test"
-        )
 
     def _log_loss_var(self, loss, loss_var, variable_name, level, stage):
         if self.hparams.use_mask:
             self.log(
                 f"mask_{stage}",
                 loss["mask"],
-                on_step=stage != "test",
+                on_step=True,
                 on_epoch=True,
                 prog_bar=True,
                 sync_dist=True,
@@ -272,7 +295,7 @@ class StandardDownscaling(L.LightningModule):
             self.log(
                 f"regress_{stage}",
                 loss["regress"],
-                on_step=stage != "test",
+                on_step=True,
                 on_epoch=True,
                 prog_bar=True,
                 sync_dist=True,
@@ -281,7 +304,7 @@ class StandardDownscaling(L.LightningModule):
         self.log(
             f"total_{stage}",
             loss["total"],
-            on_step=stage != "test",
+            on_step=True,
             on_epoch=True,
             prog_bar=True,
             sync_dist=True,
