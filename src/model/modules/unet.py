@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from hydra.utils import instantiate
-from torch.utils.checkpoint import checkpoint
 
 from model.layers import MLP
 
@@ -126,24 +125,24 @@ class UNet(nn.Module):
         )  # (B,64,Z+1,H,W)
         e0 = self.enc0(x)  # (B,c1,Z+1,H,W)
 
-        e1 = self._forward_block(self.enc1, e0, film_base)
+        e1 = self.enc1(e0, film_base)
         d1 = self.ds1(e1)  # (B,c2,Z+1,H/2,W/2)
 
-        e2 = self._forward_block(self.enc2, d1, film_base)  # (B,c2,Z+1,H/2,W/2)
+        e2 = self.enc2(d1, film_base)  # (B,c2,Z+1,H/2,W/2)
 
         d2 = self.ds2(e2)  # (B,c3,Z+1,H/4,H/4)
 
-        mid = self._forward_block(self.mid, d2, film_base)  # (B,c3,Z+1,H/4,H/4)
+        mid = self.mid(d2, film_base)  # (B,c3,Z+1,H/4,H/4)
 
         u2 = self.us2(mid)  # (B,c2,Z+1,H/2,H/2)
         u2 = torch.cat([u2, e2], dim=1)
         u2 = self.dec2_reduce(u2)
-        u2 = self._forward_block(self.dec2, u2, film_base)
+        u2 = self.dec2(u2, film_base)
 
         u1 = self.us1(u2)  # (B,c1,Z+1,H,W)
         u1 = torch.cat([u1, e1], dim=1)
         u1 = self.dec1_reduce(u1)
-        u1 = self._forward_block(self.dec1, u1, film_base)
+        u1 = self.dec1(u1, film_base)
 
         out = {}
         if self.use_mask:
@@ -155,8 +154,3 @@ class UNet(nn.Module):
         out["regress"] = regress[:, :, 1:, :, :]
 
         return out
-
-    def _forward_block(self, block, *args):
-        if self.training:
-            return block(*args)
-        return checkpoint(block, *args, use_reentrant=False)

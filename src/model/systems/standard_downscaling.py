@@ -279,7 +279,7 @@ class StandardDownscaling(L.LightningModule):
             sync_dist=True,
         )
 
-        output = {k: v.detach().cpu() for k, v in output.items()}
+        output = {k: v.detach().float().cpu() for k, v in output.items()}
         [self.test_outputs[k].append(v) for k, v in output.items()]
 
     def _log_loss_var(self, loss, loss_var, variable_name, level, stage):
