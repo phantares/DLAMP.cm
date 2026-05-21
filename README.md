@@ -17,7 +17,7 @@
 This project uses `uv` for fast dependency management. If you don't have it installed, run:
 
 ```bash
-curl -LsSf [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### 2. Install Dependencies
@@ -46,7 +46,7 @@ Experiments are tracked using Weights & Biases.
 Before running training for the first time, ensure you are logged in:
 
 ```bash
-uv run wandb login
+uv run python -m wandb login
 ```
 
 ## 🧠 Training
@@ -59,5 +59,5 @@ uv run src/train.py
 You can override any configuration setting directly from the command line without editing the config.yaml files. Simply append the parameters you want to change using the key=value syntax:
 
 ```bash
-uv run src/train.py parameter=value
+uv run src/train.py key=value
 ```
