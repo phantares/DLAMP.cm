@@ -234,7 +234,7 @@ class EDMDownscaling(L.LightningModule):
 
         loss = {}
         if self.hparams.use_mask:
-            loss["mask"] = nn.BCEWithLogitsLoss()(output["mask"], target["mask"])
+            loss["mask"] = nn.BCELoss()(output["mask"], target["mask"])
 
             mask_target = target["mask"]
             raw_loss = weight * (output["regress"] - target["regress"]) ** 2
