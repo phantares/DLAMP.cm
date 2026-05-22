@@ -37,7 +37,7 @@ def main(exp_name):
     model_class = hydra.utils.get_class(cfg.model.system._target_)
 
     model = model_class.load_from_checkpoint(checkpoint_path, column_km=column_km)
-    model.to(torch.float16 if use_mask else dtype)
+    model.to(dtype)
 
     logger = hydra.utils.instantiate(cfg.logger, mode="disabled")
 
@@ -45,7 +45,6 @@ def main(exp_name):
         logger=logger,
         accelerator="auto",
         devices=1,
-        precision="16-true" if use_mask else "16-mixed",
     )
 
     scaler_map = get_scaler_map(
