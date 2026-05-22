@@ -3,12 +3,22 @@ import h5py as h5
 
 
 class DataIndexer:
-    def __init__(self, input_dir, val_day, test_day, case_day=[]):
+    def __init__(
+        self,
+        input_dir,
+        val_day,
+        test_day,
+        case_date=[],
+        exclude_day=[],
+        exclude_date=[],
+    ):
         self.dir = input_dir
 
         self.val_day = val_day
         self.test_day = test_day
-        self.case_day = case_day
+        self.case_date = case_date
+        self.exclude_day = exclude_day
+        self.exclude_date = exclude_date
 
         self.train_index = []
         self.val_index = []
@@ -25,9 +35,12 @@ class DataIndexer:
                     date_str = t.strftime("%Y%m%d")
                     day = t.day
 
+                    if day in self.exclude_day or date_str in self.exclude_date:
+                        continue
+
                     entry = {"file": file, "index": i, "time": t}
 
-                    if date_str in self.case_day or day in self.test_day:
+                    if date_str in self.case_date or day in self.test_day:
                         self.test_index.append(entry)
                     elif day in self.val_day:
                         self.val_index.append(entry)

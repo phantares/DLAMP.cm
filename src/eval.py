@@ -25,7 +25,6 @@ def main(exp_name):
         cfg = compose(config_name="config")
 
     dtype = getattr(torch, cfg.dtype, torch.float32)
-    use_mask = cfg.model.system.get("use_mask", False)
 
     experiment_name = cfg.experiment.name
     print(f"Evaluating experiment: {experiment_name}")
