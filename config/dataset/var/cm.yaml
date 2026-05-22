@@ -26,10 +26,10 @@ target:
   - qr
 threshold:
   qi: 1e-8
-  qs: 1e-7
-  qg: 1e-7
+  qs: 1e-8
+  qg: 1e-8
   qc: 1e-8
-  qr: 1e-7
+  qr: 1e-8
 
 z_input:
   - 1000
