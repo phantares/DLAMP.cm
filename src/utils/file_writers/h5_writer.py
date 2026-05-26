@@ -1,7 +1,7 @@
 import h5py
 
 
-def write_file(
+def write_h5_file(
     input_file,
     output_file,
     new_coords,

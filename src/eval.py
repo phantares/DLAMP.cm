@@ -15,7 +15,7 @@ import numpy as np
 from itertools import groupby
 
 from dataset import DataIndexer
-from utils import find_best_model, get_scaler_map, write_file
+from utils import find_best_model, get_scaler_map, write_h5_file
 
 
 def main(exp_name):
@@ -135,7 +135,7 @@ def main(exp_name):
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = output_path / f"{input_file.stem}.h5"
 
-        write_file(
+        write_h5_file(
             input_file,
             output_file,
             new_coords,
