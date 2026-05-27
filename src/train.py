@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from dotenv import dotenv_values
 import hydra
@@ -34,6 +35,7 @@ def main(cfg) -> None:
     ckpt_dir = Path(cfg.callbacks.model_checkpoint.dirpath)
     wandb_id_file = ckpt_dir / env.get("WANDB_ID_FILE")
     exist_run_id = load_wandb_id(wandb_id_file)
+    is_rank_zero = int(os.environ.get("LOCAL_RANK", 0)) == 0
     logger = hydra.utils.instantiate(
         cfg.logger, **({"id": exist_run_id, "resume": "must"} if exist_run_id else {})
     )
@@ -70,6 +72,7 @@ def main(cfg) -> None:
     if (
         hasattr(logger, "experiment")
         and hasattr(logger.experiment, "id")
+        and is_rank_zero
         and cfg.logger.mode != "disabled"
     ):
         write_wandb_id(logger.experiment.id, wandb_id_file)
