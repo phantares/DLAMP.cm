@@ -14,3 +14,4 @@ unet:
   token_emb_channel: 512
   time_emb_channel: 128
   sigma_emb_channel: 32
+  mask_mode: concat
