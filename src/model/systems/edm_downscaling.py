@@ -247,7 +247,13 @@ class EDMDownscaling(L.LightningModule):
                 dim=-1
             )
 
-            loss["regress"] = torch.mean(loss_sum / (mask_sum + 1e-10))
+            valid = mask_sum > 0
+            if not valid.any():
+                loss["regress"] = torch.tensor(
+                    0.0, device=mask_sum.device, requires_grad=self.training
+                )
+            else:
+                loss["regress"] = loss_sum[valid].sum() / mask_sum[valid].sum()
 
             weight_mask = self.hparams.loss_weight.get("mask", 1.0)
             weight_regress = self.hparams.loss_weight.get("regress", 1.0)
