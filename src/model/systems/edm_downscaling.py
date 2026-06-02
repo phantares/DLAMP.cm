@@ -261,8 +261,7 @@ class EDMDownscaling(L.LightningModule):
                 weight_mask * loss["mask"] + weight_regress * loss["regress"]
             )
 
-            mask_output = (output["mask"] > 0.5).float()
-            output_result = output["regress"] * mask_output
+            output_result = torch.where(output["mask"] > 0.5, output["regress"], -1.0)
 
         else:
             loss["total"] = torch.mean(
@@ -400,7 +399,8 @@ class EDMDownscaling(L.LightningModule):
         )
 
         if self.hparams.use_mask:
-            mask_output = (output["mask"] > 0.5).float()
-            output["regress"] = output["regress"] * mask_output
+            output["regress"] = torch.where(
+                output["mask"] > 0.5, output["regress"], -1.0
+            )
 
         return output["regress"]
