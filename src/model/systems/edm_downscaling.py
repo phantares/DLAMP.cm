@@ -283,7 +283,7 @@ class EDMDownscaling(L.LightningModule):
 
         target = {"regress": target_regress}
         if self.hparams.use_mask:
-            target["mask"] = (target_regress > 0).float()
+            target["mask"] = (target_regress > -1.0).float()
 
         rnd_normal = torch.randn(
             [target_regress.shape[0], target_regress.shape[1], 1, 1, 1, 1],
@@ -307,7 +307,7 @@ class EDMDownscaling(L.LightningModule):
 
         target = {"regress": target_regress}
         if self.hparams.use_mask:
-            target["mask"] = (target_regress > 0).float()
+            target["mask"] = (target_regress > -1.0).float()
 
         v_gen = torch.Generator(device=target_regress.device).manual_seed(
             42 + batch_idx
