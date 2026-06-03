@@ -228,7 +228,7 @@ class StandardDownscaling(L.LightningModule):
 
         target = {"regress": target_regress}
         if self.hparams.use_mask:
-            target["mask"] = (target_regress > 0).float()
+            target["mask"] = (target_regress > -1.0).float()
 
         loss, loss_var, _ = self.general_step(
             single, upper, time, target, column_bottom, column_left, shuffle=True
@@ -245,7 +245,7 @@ class StandardDownscaling(L.LightningModule):
 
         target = {"regress": target_regress}
         if self.hparams.use_mask:
-            target["mask"] = (target_regress > 0).float()
+            target["mask"] = (target_regress > -1.0).float()
 
         loss, loss_var, _ = self.general_step(
             single, upper, time, target, column_bottom, column_left
@@ -262,7 +262,7 @@ class StandardDownscaling(L.LightningModule):
 
         target = {"regress": target_regress}
         if self.hparams.use_mask:
-            target["mask"] = (target_regress > 0).float()
+            target["mask"] = (target_regress > -1.0).float()
 
         loss, _, output = self.general_step(
             single,
