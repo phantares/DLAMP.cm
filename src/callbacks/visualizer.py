@@ -69,6 +69,8 @@ class VisualizerCallback(L.Callback):
             t_sum = target[i].sum(dim=0)
             p_sum = pred[i].sum(dim=0)
             v_min, v_max = t_sum.min(), t_sum.max()
+            if v_max == v_min:
+                v_max = v_min + 0.1
 
             ax0 = fig.add_subplot(inner_gs[0, 0])
             ax0.imshow(t_sum, cmap="viridis", vmin=v_min, vmax=v_max)
