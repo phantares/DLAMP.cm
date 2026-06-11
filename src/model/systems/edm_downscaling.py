@@ -26,10 +26,14 @@ class EDMDownscaling(L.LightningModule):
         sigma_data,
         sigma_min=None,
         sigma_max=None,
+        output_mode="regress",
         use_mask=False,
+        loss_cfg=None,
         loss_weight={},
     ):
         super().__init__()
+
+        self.loss_fn = instantiate(loss_cfg, reduction="none")
 
         if isinstance(network_cfg, dict):
             network_cfg = OmegaConf.create(network_cfg)
@@ -52,12 +56,18 @@ class EDMDownscaling(L.LightningModule):
                 upper_channel=upper_channel,
             )
 
+        match output_mode:
+            case "regress":
+                num_params = 1
+            case "norm":
+                num_params = 2
         unet_factory = instantiate(network_cfg["unet"], _partial_=True)
         self.unet = unet_factory(
             layer_cfg=layer_cfg,
             single_channel=single_channel,
             upper_channel=upper_channel + output_channel,
             out_channel=output_channel,
+            num_params=num_params,
             use_token=self.use_global,
             include_sigma=True,
             use_mask=use_mask,
@@ -237,7 +247,7 @@ class EDMDownscaling(L.LightningModule):
             loss["mask"] = nn.BCELoss()(output["mask"], target["mask"])
 
             mask_target = target["mask"]
-            raw_loss = weight * (output["regress"] - target["regress"]) ** 2
+            raw_loss = weight * self.loss_fn(output["regress"], target["regress"])
             masked_loss = raw_loss * mask_target
 
             loss_sum = rearrange(masked_loss, "b n c z h w -> b n (c z h w)").sum(
@@ -265,11 +275,11 @@ class EDMDownscaling(L.LightningModule):
 
         else:
             loss["total"] = torch.mean(
-                weight * (output["regress"] - target["regress"]) ** 2
+                weight * self.loss_fn(output["regress"], target["regress"])
             )
             output_result = output["regress"]
 
-        loss_var = nn.MSELoss(reduction="none")(output_result, target["regress"]).mean(
+        loss_var = self.loss_fn(output_result, target["regress"]).mean(
             dim=(0, 1, -1, -2)
         )
 

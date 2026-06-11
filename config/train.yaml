@@ -6,6 +6,7 @@ defaults:
   - model/layer: convnext 
   - model/module: default
   - model/system: standard 
+  - model/loss: mse
   - callbacks: default
   - logger: default
   - _self_
