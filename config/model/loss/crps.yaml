@@ -1,0 +1,2 @@
+_target_: model.losses.CRPSLoss
+mode: ${model.system.output_mode}

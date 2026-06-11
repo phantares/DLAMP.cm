@@ -12,6 +12,7 @@ class UNet(nn.Module):
         single_channel,
         upper_channel,
         out_channel,
+        num_params,
         base_channel=128,
         use_mask=False,
         mask_mode="concat",  # "concat" | "separate"
@@ -95,7 +96,9 @@ class UNet(nn.Module):
             )
             if mask_mode == "concat":
                 regress_channel = regress_channel + out_channel
-        self.regress = nn.Conv3d(regress_channel, out_channel, kernel_size=1)
+        self.regress = nn.Conv3d(
+            regress_channel, out_channel * num_params, kernel_size=1
+        )
 
     def forward(
         self,
