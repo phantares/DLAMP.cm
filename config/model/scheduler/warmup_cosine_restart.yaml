@@ -1,0 +1,12 @@
+_target_: torch.optim.lr_scheduler.SequentialLR
+_recursive_: false
+schedulers:
+  - _target_: torch.optim.lr_scheduler.LinearLR
+    start_factor: 0.1
+    end_factor: 1.0
+    total_iters: 500
+  - _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+    T_0: 2000
+    T_mult: 2
+    eta_min: 1e-6
+milestones: [500]

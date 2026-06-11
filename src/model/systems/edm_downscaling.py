@@ -30,6 +30,8 @@ class EDMDownscaling(L.LightningModule):
         use_mask=False,
         loss_cfg=None,
         loss_weight={},
+        optimizer_cfg=None,
+        scheduler_cfg=None,
     ):
         super().__init__()
 
@@ -286,7 +288,24 @@ class EDMDownscaling(L.LightningModule):
         return loss, loss_var
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-5)
+        optimizer = instantiate(self.hparams.optimizer_cfg, params=self.parameters())
+
+        schedulers = [
+            instantiate(s_cfg, optimizer=optimizer)
+            for s_cfg in self.hparams.scheduler_cfg.schedulers
+        ]
+        scheduler = instantiate(
+            self.hparams.scheduler_cfg, optimizer=optimizer, schedulers=schedulers
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            },
+        }
 
     def training_step(self, batch, batch_idx):
         single, upper, time, target_regress, column_bottom, column_left = batch
