@@ -7,6 +7,8 @@ defaults:
   - model/module: default
   - model/system: standard 
   - model/loss: mse
+  - model/optimizer: adamw
+  - model/scheduler: warmup_cosine_restart
   - callbacks: default
   - logger: default
   - _self_
