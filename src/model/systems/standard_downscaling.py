@@ -235,22 +235,25 @@ class StandardDownscaling(L.LightningModule):
     def configure_optimizers(self):
         optimizer = instantiate(self.hparams.optimizer_cfg, params=self.parameters())
 
-        schedulers = [
-            instantiate(s_cfg, optimizer=optimizer)
-            for s_cfg in self.hparams.scheduler_cfg.schedulers
-        ]
-        scheduler = instantiate(
-            self.hparams.scheduler_cfg, optimizer=optimizer, schedulers=schedulers
-        )
+        if self.hparams.scheduler_cfg:
+            schedulers = [
+                instantiate(s_cfg, optimizer=optimizer)
+                for s_cfg in self.hparams.scheduler_cfg.schedulers
+            ]
+            scheduler = instantiate(
+                self.hparams.scheduler_cfg, optimizer=optimizer, schedulers=schedulers
+            )
 
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "step",
-                "frequency": 1,
-            },
-        }
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "step",
+                    "frequency": 1,
+                },
+            }
+
+        return optimizer
 
     def training_step(self, batch, batch_idx):
         single, upper, time, target_regress, column_bottom, column_left = batch
