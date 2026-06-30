@@ -2,12 +2,7 @@ import h5py
 
 
 def write_h5_file(
-    input_file,
-    output_file,
-    new_coords,
-    predictions,
-    targets,
-    var_names,
+    input_file, output_file, new_coords, predictions, targets, var_names, mode="regress"
 ):
     with h5py.File(input_file, "r") as f_in, h5py.File(output_file, "w") as f_out:
 
@@ -29,10 +24,27 @@ def write_h5_file(
         targ_grp = f_out.create_group("targets")
 
         for i, name in enumerate(var_names):
-            p_ds = pred_grp.create_dataset(
-                name, data=predictions["regress"][:, i, ...], compression="gzip"
-            )
-            attach_dim(p_ds, *dims)
+            match mode:
+                case "regress":
+                    p_ds = pred_grp.create_dataset(
+                        name, data=predictions["regress"][:, i, ...], compression="gzip"
+                    )
+                    attach_dim(p_ds, *dims)
+
+                case "norm":
+                    p_ds = pred_grp.create_dataset(
+                        f"{name}_mu",
+                        data=predictions["regress"][:, i, ...],
+                        compression="gzip",
+                    )
+                    attach_dim(p_ds, *dims)
+
+                    s_ds = pred_grp.create_dataset(
+                        f"{name}_sig",
+                        data=predictions["regress"][:, i + len(var_names), ...],
+                        compression="gzip",
+                    )
+                    attach_dim(s_ds, *dims)
 
             if "mask" in predictions.keys():
                 m_ds = pred_grp.create_dataset(
