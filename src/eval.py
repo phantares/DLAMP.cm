@@ -29,6 +29,11 @@ def main(exp_name):
     experiment_name = cfg.experiment.name
     print(f"Evaluating experiment: {experiment_name}")
 
+    mode = cfg.model.system.get("output_mode", "regress")
+
+    target_var = cfg.dataset.var.target
+    target_z = cfg.dataset.var.z_target
+
     column_km = cfg.dataset.res.global_grid * cfg.dataset.res.resolution_input
     cfg.dataset.res.column_km = column_km
     cfg.dataset.res.crop_number = 1
@@ -49,7 +54,7 @@ def main(exp_name):
 
     scaler_map = get_scaler_map(
         cfg.dataset.res.stats_file,
-        **{var: cfg.dataset.var.z_target for var in cfg.dataset.var.target},
+        **{var: target_z for var in target_var},
     )
 
     global_grid_hr = int(
@@ -81,14 +86,23 @@ def main(exp_name):
             k: torch.cat(v).to("cpu") for k, v in model.test_outputs.items()
         }
 
-        for c, variable in enumerate(cfg.dataset.var.target):
-            invt_pred = (
-                scaler_map[variable]
-                .inverse_transform(test_outputs["regress"][:, :, c, ...])
-                .clamp(min=0)
-            )
+        if mode == "regress":
+            for c, variable in enumerate(target_var):
+                invt_pred = (
+                    scaler_map[variable]
+                    .inverse_transform(test_outputs["regress"][:, :, c, ...])
+                    .clamp(min=0)
+                )
 
-            test_outputs["regress"][:, :, c, ...] = invt_pred
+                test_outputs["regress"][:, :, c, ...] = invt_pred
+
+        if mode == "norm":
+            for c, variable in enumerate(target_var):
+                invt_pred = torch.exp(
+                    test_outputs["regress"][:, :, c + len(target_var), ...]
+                )
+
+                test_outputs["regress"][:, :, c + len(target_var), ...] = invt_pred
 
         test_outputs = {
             k: v.cpu().numpy().reshape(-1, *v.shape[2:])
@@ -104,14 +118,10 @@ def main(exp_name):
             new_lat, new_lon = transformed_coords[0], transformed_coords[1]
 
             pressure = f["pressure"][:]
-            z_tar = (
-                len(pressure)
-                - 1
-                - np.searchsorted(pressure[::-1], cfg.dataset.var.z_target)
-            )
+            z_tar = len(pressure) - 1 - np.searchsorted(pressure[::-1], target_z)
 
             test_targets = []
-            for c, variable in enumerate(cfg.dataset.var.target):
+            for c, variable in enumerate(target_var):
                 data = f[variable][indices,]
                 data = torch.from_numpy(
                     data[
@@ -126,7 +136,7 @@ def main(exp_name):
 
         new_coords = {
             "time": new_time,
-            "pressure": cfg.dataset.var.z_target,
+            "pressure": target_z,
             "latitude": new_lat,
             "longitude": new_lon,
         }
@@ -141,7 +151,8 @@ def main(exp_name):
             new_coords,
             test_outputs,
             test_targets,
-            cfg.dataset.var.target,
+            target_var,
+            mode,
         )
 
 
