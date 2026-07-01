@@ -102,7 +102,7 @@ class DataManager(L.LightningDataModule):
 
         return {
             "num_workers": num_workers,
-            "multiprocessing_context": "spawn",
+            # "multiprocessing_context": "spawn",
             "persistent_workers": True,
             "pin_memory": True,
         }

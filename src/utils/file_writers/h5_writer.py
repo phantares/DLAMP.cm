@@ -40,7 +40,7 @@ def write_h5_file(
                     attach_dim(p_ds, *dims)
 
                     s_ds = pred_grp.create_dataset(
-                        f"{name}_sig",
+                        f"{name}_sigma",
                         data=predictions["regress"][:, i + len(var_names), ...],
                         compression="gzip",
                     )
