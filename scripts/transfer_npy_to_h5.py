@@ -67,8 +67,8 @@ def main(input_dir):
             for a_name, a_val in f_in[var].attrs.items():
                 p_ds.attrs[a_name] = a_val
 
-        for source in vars:
-            for index, var in vars[source].items():
+        for source in var_configs:
+            for index, var in var_configs[source].items():
                 data = []
 
                 files = sorted(input_dir.glob(f"{source}*.npy"))
