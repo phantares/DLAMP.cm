@@ -3,18 +3,18 @@ import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import argparse
-from pathlib import Path
-from dotenv import dotenv_values
-import hydra
-from hydra import initialize, compose
-import torch
-from torchvision.transforms.v2 import CenterCrop
-from lightning import Trainer
-import h5py as h5
-import numpy as np
 from itertools import groupby
+from pathlib import Path
 
+import h5py as h5
+import hydra
+import numpy as np
+import torch
 from dataset import DataIndexer
+from dotenv import dotenv_values
+from hydra import compose, initialize
+from lightning import Trainer
+from torchvision.transforms.v2 import CenterCrop
 from utils import find_best_model, get_scaler_map, write_h5_file
 
 
@@ -86,23 +86,25 @@ def main(exp_name):
             k: torch.cat(v).to("cpu") for k, v in model.test_outputs.items()
         }
 
-        if mode == "regress":
-            for c, variable in enumerate(target_var):
-                invt_pred = (
-                    scaler_map[variable]
-                    .inverse_transform(test_outputs["regress"][:, :, c, ...])
-                    .clamp(min=0)
-                )
+        match mode:
+            case "regress":
+                for v, variable in enumerate(target_var):
+                    invt_pred = (
+                        scaler_map[variable]
+                        .inverse_transform(test_outputs["regress"][:, :, v, ...])
+                        .clamp(min=0)
+                    )
 
-                test_outputs["regress"][:, :, c, ...] = invt_pred
+                    test_outputs["regress"][:, :, v, ...] = invt_pred
 
-        if mode == "norm":
-            for c, variable in enumerate(target_var):
-                invt_pred = torch.exp(
-                    test_outputs["regress"][:, :, c + len(target_var), ...]
-                )
+            case "norm":
+                C = test_outputs["regress"].size(-4)
 
-                test_outputs["regress"][:, :, c + len(target_var), ...] = invt_pred
+                test_outputs["mu"] = test_outputs["regress"][..., : C // 2, :, :, :]
+                invt_sigma = torch.exp(test_outputs["regress"][..., C // 2 :, :, :, :])
+                test_outputs["sigma"] = invt_sigma
+
+                del test_outputs["regress"]
 
         test_outputs = {
             k: v.cpu().numpy().reshape(-1, *v.shape[2:])
@@ -141,7 +143,7 @@ def main(exp_name):
             "longitude": new_lon,
         }
 
-        output_path = Path(env.get("OUTPUT_DIR"), exp_name)
+        output_path = Path(env.get("OUTPUT_DIR"), exp_name, "testing")
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = output_path / f"{input_file.stem}.h5"
 

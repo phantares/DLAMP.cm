@@ -5,7 +5,6 @@ def write_h5_file(
     input_file, output_file, new_coords, predictions, targets, var_names, mode="regress"
 ):
     with h5py.File(input_file, "r") as f_in, h5py.File(output_file, "w") as f_out:
-
         for attr_name, attr_val in f_in.attrs.items():
             f_out.attrs[attr_name] = attr_val
 
@@ -24,35 +23,12 @@ def write_h5_file(
         targ_grp = f_out.create_group("targets")
 
         for i, name in enumerate(var_names):
-            match mode:
-                case "regress":
-                    p_ds = pred_grp.create_dataset(
-                        name, data=predictions["regress"][:, i, ...], compression="gzip"
-                    )
-                    attach_dim(p_ds, *dims)
-
-                case "norm":
-                    p_ds = pred_grp.create_dataset(
-                        f"{name}_mu",
-                        data=predictions["regress"][:, i, ...],
-                        compression="gzip",
-                    )
-                    attach_dim(p_ds, *dims)
-
-                    s_ds = pred_grp.create_dataset(
-                        f"{name}_sigma",
-                        data=predictions["regress"][:, i + len(var_names), ...],
-                        compression="gzip",
-                    )
-                    attach_dim(s_ds, *dims)
-
-            if "mask" in predictions.keys():
-                m_ds = pred_grp.create_dataset(
-                    f"{name}_mask",
-                    data=predictions["mask"][:, i, ...],
-                    compression="gzip",
+            for key in predictions.keys():
+                ds_name = name if key == "regress" else f"{name}_{key}"
+                p_ds = pred_grp.create_dataset(
+                    ds_name, data=predictions[key][:, i, ...], compression="gzip"
                 )
-                attach_dim(m_ds, *dims)
+                attach_dim(p_ds, *dims)
 
             t_ds = targ_grp.create_dataset(
                 name, data=targets[:, i, ...], compression="gzip"
@@ -65,6 +41,7 @@ def write_h5_file(
                     t_ds.attrs[a_n] = a_v
 
     print(f"File saved : {output_file}")
+    print_h5_structure(output_file)
 
 
 def attach_dim(data, *dims):
