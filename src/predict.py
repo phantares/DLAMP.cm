@@ -12,7 +12,7 @@ from torchvision.transforms.v2 import CenterCrop, Compose, Resize
 from utils import write_h5_file
 
 
-def main(exp_name, target_time, source_name, input_dir):
+def main(exp_name, target_time, source_name, input_dir, batch_size=2):
     env = dotenv_values(".env")
 
     with initialize(config_path=f"../experiments/{exp_name}/.hydra", version_base=None):
@@ -68,6 +68,7 @@ def main(exp_name, target_time, source_name, input_dir):
         else:
             target_index = slice(None)
         time = time[target_index]
+        n = len(time)
 
         datas_single = []
         for var in cfg.dataset.var.input_single:
@@ -81,7 +82,7 @@ def main(exp_name, target_time, source_name, input_dir):
         datas_single = torch.stack(datas_single, dim=1)
         inputs["single"] = (
             torch.cat(
-                (datas_single, datas_static.expand(len(time), -1, -1, -1)),
+                (datas_single, datas_static.expand(n, -1, -1, -1)),
                 axis=1,
             )
             .to(dtype)
@@ -115,17 +116,29 @@ def main(exp_name, target_time, source_name, input_dir):
 
         inputs["upper"] = torch.stack(datas_upper, dim=1).to(dtype).numpy()
 
-    inputs["column_bottom"] = torch.zeros((len(time), 1)).to(dtype).numpy()
-    inputs["column_left"] = torch.zeros((len(time), 1)).to(dtype).numpy()
-    inputs["column_km"] = (
+    inputs["column_bottom"] = torch.zeros((n, 1)).to(dtype).numpy()
+    inputs["column_left"] = torch.zeros((n, 1)).to(dtype).numpy()
+    column_km = (
         torch.tensor([grid_low * cfg.dataset.res.resolution_input]).to(dtype).numpy()
     )
 
-    output = session.run(None, inputs)
     outputs_info = session.get_outputs()
-    outputs = {}
-    for i, o in enumerate(outputs_info):
-        outputs[o.name] = output[i].reshape(-1, *output[i].shape[2:])
+    outputs_chunks = {o.name: [] for o in outputs_info}
+
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+
+        batch_inputs = {k: inputs[k][start:end] for k in inputs if k != "column_km"}
+        batch_inputs["column_km"] = column_km
+
+        batch_output = session.run(None, batch_inputs)
+        for i, o in enumerate(outputs_info):
+            outputs_chunks[o.name].append(batch_output[i])
+
+    outputs = {
+        name: np.concatenate(chunks, axis=0).reshape(-1, *chunks[0].shape[2:])
+        for name, chunks in outputs_chunks.items()
+    }
 
     with h5.File(example_file, "r") as f:
         if source_name != "RWRF":
@@ -217,6 +230,13 @@ if __name__ == "__main__":
         default=dotenv_values(".env").get("INPUT_DIR"),
         help="Enter input dir path.",
     )
+    parser.add_argument(
+        "--batch_size",
+        "-b",
+        type=int,
+        default=2,
+        help="Enter batch size.",
+    )
     args = parser.parse_args()
 
     main(
@@ -224,4 +244,5 @@ if __name__ == "__main__":
         datetime.strptime(args.time, "%Y%m%d%H").replace(tzinfo=timezone.utc),
         args.source,
         Path(args.input_dir),
+        args.batch_size,
     )
