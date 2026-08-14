@@ -125,12 +125,6 @@ def main(exp_name):
     with torch.no_grad():
         output_example = export_model(*example_inputs)
 
-    batch = Dim(
-        "batch_size",
-        min=1,
-        max=16,
-    )
-
     for k, v in output_example.items():
         out_dim = len(v.shape)
         dynamic_axes_config[k] = {
