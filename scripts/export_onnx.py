@@ -84,15 +84,13 @@ def main(exp_name):
     for k in input_keys:
         dim = len(model.example_input_array[k].shape)
 
-        if k == "column_km":
-            dynamic_axes_config[k] = {0: "dim_one"}
-        else:
+        if k != "column_km":
             dynamic_axes_config[k] = {0: "batch_size"}
 
         if k in ["noise", "sigma", "column_bottom", "column_left"]:
             dynamic_axes_config[k][1] = "crop_number"
 
-        if k in ["single", "upper"]:
+        if k in ["single", "upper", "time"]:
             dynamic_axes_config[k][dim - 2] = "h_in"
             dynamic_axes_config[k][dim - 1] = "w_in"
         elif k in ["noise"]:

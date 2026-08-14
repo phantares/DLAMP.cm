@@ -1,7 +1,8 @@
 import torch
 import torch.nn.functional as F
 from einops import rearrange
-from torchvision.transforms.v2 import RandomCrop, functional as Ftrans
+from torchvision.transforms.v2 import RandomCrop
+from torchvision.transforms.v2 import functional as Ftrans
 
 
 def crop_column(
