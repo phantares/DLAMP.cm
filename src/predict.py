@@ -35,8 +35,17 @@ def main(exp_name, target_time, source_name, input_dir, batch_size=2):
         else input_dir / f"{target_time.strftime('%Y%m%d_%H%M')}.h5"
     )
 
+    sess_options = ort.SessionOptions()
+    sess_options.intra_op_num_threads = 12
+    sess_options.inter_op_num_threads = 1
+    sess_options.enable_cpu_mem_arena = False
+
     onnx_path = f"checkpoints/{exp_name}/{exp_name}.onnx"
-    session = ort.InferenceSession(onnx_path)
+    session = ort.InferenceSession(
+        onnx_path,
+        sess_options=sess_options,
+        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
 
     inputs = {}
     with h5.File(input_file, "r") as f:
