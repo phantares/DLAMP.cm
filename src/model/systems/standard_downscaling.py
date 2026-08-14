@@ -1,11 +1,10 @@
 import lightning as L
 import torch
-import torch.nn as nn
 from einops import rearrange, repeat
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
-
-from utils import interpolate_z, crop_column
+from torch import nn
+from utils import crop_column, interpolate_z
 
 
 class StandardDownscaling(L.LightningModule):
@@ -308,7 +307,7 @@ class StandardDownscaling(L.LightningModule):
 
         loss = {k: v.detach() for k, v in loss.items()}
         self.log(
-            f"total_test",
+            "total_test",
             loss["total"].item(),
             on_step=False,
             on_epoch=True,
