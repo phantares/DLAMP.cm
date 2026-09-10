@@ -1,9 +1,10 @@
 import torch
-import torch.nn as nn
-from timm.layers import DropPath
 from einops import rearrange
+from timm.layers import DropPath
+from torch import nn
 
-from . import MLP, FiLM
+from .film import FiLM
+from .mlp import MLP
 
 
 class ConvNeXtLayer(nn.Module):
@@ -40,7 +41,12 @@ class ConvNeXtBlock(nn.Module):
         super().__init__()
 
         self.dwconv = nn.Conv3d(
-            dim, dim, kernel, padding=tuple(i // 2 for i in kernel), groups=dim
+            dim,
+            dim,
+            kernel,
+            padding=tuple(i // 2 for i in kernel),
+            groups=dim,
+            padding_mode="replicate",
         )
         self.norm = nn.LayerNorm(dim)
         self.mlp = MLP(dim, dim * 4, dim)

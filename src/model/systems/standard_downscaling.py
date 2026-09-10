@@ -1,6 +1,6 @@
 import lightning as L
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from torch import nn
@@ -41,14 +41,6 @@ class StandardDownscaling(L.LightningModule):
 
         self.save_hyperparameters()
 
-        self.use_global = network_cfg["use_global"]
-        if self.use_global:
-            self.global_encoder = instantiate(
-                network_cfg["global_encoder"],
-                single_channel=single_channel,
-                upper_channel=upper_channel,
-            )
-
         match output_mode:
             case "regress":
                 num_params = 1
@@ -61,7 +53,6 @@ class StandardDownscaling(L.LightningModule):
             upper_channel=upper_channel,
             out_channel=output_channel,
             num_params=num_params,
-            use_token=self.use_global,
             use_mask=use_mask,
         )
 
@@ -94,11 +85,6 @@ class StandardDownscaling(L.LightningModule):
         crop_number = column_bottom.shape[1]
         column_grid = torch.round(column_km // self.hparams.resolution_input)
         target_grid = torch.round(column_km // self.hparams.resolution_target)
-
-        global_token = None
-        if self.use_global:
-            global_token = self.global_encoder(single, upper)
-            global_token = repeat(global_token, "b c -> (b n) c", n=crop_number)
 
         time = crop_column(
             time,
@@ -143,9 +129,6 @@ class StandardDownscaling(L.LightningModule):
             input_surface=column_single[indices, ...],
             input_upper=input_upper[indices, ...],
             time=time[indices, ...],
-            global_token=(
-                global_token[indices, ...] if global_token is not None else None
-            ),
         )
 
         if shuffle:
