@@ -1,10 +1,9 @@
-import torch.nn as nn
+from torch import nn
 
-from . import FiLM
+from .film import FiLM
 
 
 class ResNetBlock(nn.Module):
-
     def __init__(
         self,
         dim,

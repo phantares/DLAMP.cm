@@ -1,17 +1,11 @@
-import torch
 import hydra
-
-torch.set_default_dtype(torch.float64)
-
+import torch
 from pytorch_lightning.utilities.model_summary import ModelSummary
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="train")
 def main(cfg):
-    if cfg.dtype == "float64":
-        dtype = torch.float64
-    else:
-        dtype = torch.float32
+    dtype = getattr(torch, cfg.dtype, torch.float32)
     torch.set_default_dtype(dtype)
 
     model = hydra.utils.instantiate(

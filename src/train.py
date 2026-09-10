@@ -1,12 +1,12 @@
 import os
 from pathlib import Path
-from dotenv import dotenv_values
-import hydra
-from lightning import Trainer
-import torch
-from omegaconf import DictConfig
 
-from utils import write_wandb_id, load_wandb_id
+import hydra
+import torch
+from dotenv import dotenv_values
+from lightning import Trainer
+from omegaconf import DictConfig
+from utils import load_wandb_id, write_wandb_id
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="train")
@@ -41,7 +41,7 @@ def main(cfg) -> None:
     )
 
     callbacks = []
-    for _, cb_conf in cfg.callbacks.items():
+    for cb_conf in cfg.callbacks.values():
         if isinstance(cb_conf, DictConfig) and "_target_" in cb_conf:
             callbacks.append(hydra.utils.instantiate(cb_conf))
 
