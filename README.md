@@ -1,4 +1,4 @@
-# Project Name
+# DLAMP.cm
 
 > A generative AI model for high fidelity 3D cloud structure downscaling.
 
