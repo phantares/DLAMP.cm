@@ -1,10 +1,11 @@
-from pathlib import Path
-from dotenv import dotenv_values
 import argparse
+import json
+from pathlib import Path
+
 import h5py as h5
 import numpy as np
-import json
 import torch
+from dotenv import dotenv_values
 from torchvision.transforms.v2 import Resize
 
 variables_static = ["terrain", "latitude", "longitude"]
@@ -83,7 +84,6 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
     pressure = files[0]["pressure"][:]
 
     for variable in variables_upper:
-
         for k, p in enumerate(pressure):
             print(f"{variable}{int(p)}")
             vars = []
@@ -123,7 +123,6 @@ def main(resolution, shape, input_dir=None, output_dir=None, cloud_threshold=1e-
             results[f"{variable}{int(p)}"] = stats
 
     for variable in variables_target:
-
         for k, p in enumerate(pressure):
             print(f"{variable}{int(p)}")
             vars = []

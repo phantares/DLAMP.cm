@@ -1,5 +1,5 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
 
 def write_wandb_id(run_id: str, id_file: Path) -> None:

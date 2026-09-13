@@ -48,9 +48,9 @@ class EDMSampler:
                 else 0
             )
             t_hat = t_cur + gamma * t_cur
-            x_hat = x_cur + np.sqrt(
-                t_hat**2 - t_cur**2
-            ) * S_noise * np.random.randn(*x_cur.shape).astype(noise.dtype)
+            x_hat = x_cur + np.sqrt(t_hat**2 - t_cur**2) * S_noise * np.random.randn(
+                *x_cur.shape
+            ).astype(noise.dtype)
 
             denoised = self._run_model(x_hat, t_hat, conditions)
             d_cur = (x_hat - denoised) / t_hat

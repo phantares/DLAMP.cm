@@ -1,14 +1,14 @@
 import os
+
 import lightning as L
 import torch
 from torch.utils.data import DataLoader
-
-from . import DataIndexer, DataDataset
 from utils import get_scaler_map
+
+from . import DataDataset, DataIndexer
 
 
 class DataManager(L.LightningDataModule):
-
     def __init__(self, **data_configs):
         super().__init__()
         self.save_hyperparameters()

@@ -1,8 +1,7 @@
 import lightning as L
-import torch
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-
+import torch
+from matplotlib import gridspec
 from utils import get_scaler_map
 
 
