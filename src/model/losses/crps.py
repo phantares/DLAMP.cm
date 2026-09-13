@@ -1,10 +1,9 @@
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.distributions import Normal
 
 
 class CRPSLoss(nn.Module):
-
     def __init__(self, reduction: str = "mean", mode: str = "norm"):
         super().__init__()
         assert reduction in ("mean", "sum", "none")
