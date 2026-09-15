@@ -15,9 +15,13 @@ class ResNetBlock(nn.Module):
         super().__init__()
 
         self.norm1 = nn.GroupNorm(groups, dim)
-        self.conv1 = nn.Conv3d(dim, dim, 3, padding=dilation, dilation=dilation)
+        self.conv1 = nn.Conv3d(
+            dim, dim, 3, padding=dilation, padding_mode="replicate", dilation=dilation
+        )
         self.norm2 = nn.GroupNorm(groups, dim)
-        self.conv2 = nn.Conv3d(dim, dim, 3, padding=dilation, dilation=dilation)
+        self.conv2 = nn.Conv3d(
+            dim, dim, 3, padding=dilation, padding_mode="replicate", dilation=dilation
+        )
         self.act = nn.SiLU()
         self.drop = nn.Dropout(dropout)
 
@@ -26,7 +30,7 @@ class ResNetBlock(nn.Module):
         else:
             self.film = None
 
-    def forward(self, x, film_base=None):
+    def forward(self, x, film_scalar=None, film_spatial=None):
         shortcut = x
 
         x = self.norm1(x)
@@ -34,8 +38,8 @@ class ResNetBlock(nn.Module):
         x = self.conv1(x)
 
         x = self.norm2(x)
-        if self.film is not None and film_base is not None:
-            x = self.film(x, film_base)
+        if self.film is not None:
+            x = self.film(x, film_scalar, film_spatial)
         x = self.act(x)
         x = self.drop(x)
         x = self.conv2(x)

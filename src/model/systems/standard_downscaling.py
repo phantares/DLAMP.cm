@@ -187,9 +187,7 @@ class StandardDownscaling(L.LightningModule):
 
             valid = mask_sum > 0
             if not valid.any():
-                loss["regress"] = torch.tensor(
-                    0.0, device=mask_sum.device, requires_grad=self.training
-                )
+                loss["regress"] = output["regress"].sum() * 0.0
             else:
                 loss["regress"] = loss_sum[valid].sum() / mask_sum[valid].sum()
 

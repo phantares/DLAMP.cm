@@ -60,7 +60,7 @@ class ConvNeXtBlock(nn.Module):
         else:
             self.film = None
 
-    def forward(self, x: torch.Tensor, film_base=None):
+    def forward(self, x: torch.Tensor, film_scalar=None, film_spatial=None):
         shortcut = x
         x = self.dwconv(x)
 
@@ -68,8 +68,10 @@ class ConvNeXtBlock(nn.Module):
         x = self.norm(x)
 
         x = self.mlp.linear1(x)
-        if self.film is not None and film_base is not None:
-            x = self.film(x, film_base)
+        if self.film is not None:
+            x = rearrange(x, "b z h w c -> b c z h w")
+            x = self.film(x, film_scalar, film_spatial)
+            x = rearrange(x, "b c z h w -> b z h w c")
         x = self.mlp.activation(x)
         x = self.mlp.linear2(x)
 
