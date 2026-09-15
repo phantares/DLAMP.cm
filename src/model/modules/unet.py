@@ -25,7 +25,10 @@ class UNet(nn.Module):
 
         c1, c2, c3 = base_channel, int(base_channel * 5 / 4), int(base_channel * 3 / 2)
 
-        film_channel = base_channel * 2
+        if include_sigma or include_time:
+            film_channel = base_channel * 2
+        else:
+            film_channel = 0
 
         self.include_sigma = include_sigma
         if include_sigma:
@@ -36,7 +39,7 @@ class UNet(nn.Module):
         self.include_time = include_time
         if include_time:
             self.emb_time = nn.Sequential(
-                nn.Conv2d(4, time_emb_channel, 3, padding=1),
+                nn.Conv2d(4, time_emb_channel, 3, padding=1, padding_mode="replicate"),
                 nn.SiLU(),
                 nn.Conv2d(time_emb_channel, film_channel, 1),
             )
@@ -101,8 +104,13 @@ class UNet(nn.Module):
 
         if time is not None and self.include_time:
             film_time = self.emb_time(time)
+        else:
+            film_time = None
+
         if sigma is not None and self.include_sigma:
             film_sigma = self.emb_sigma(sigma)
+        else:
+            film_sigma = None
 
         x = torch.cat(
             [self.sfc_conv(input_surface).unsqueeze(-3), self.up_conv(input_upper)],
@@ -110,26 +118,30 @@ class UNet(nn.Module):
         )  # (B,64,Z+1,H,W)
         e0 = self.enc0(x)  # (B,c1,Z+1,H,W)
 
-        e1 = self.enc1(e0)
+        e1 = self.enc1(e0, film_scalar=film_sigma, film_spatial=film_time)
         d1 = self.ds1(e1)  # (B,c2,Z+1,H/2,W/2)
 
-        e2 = self.enc2(d1)  # (B,c2,Z+1,H/2,W/2)
+        e2 = self.enc2(
+            d1, film_scalar=film_sigma, film_spatial=film_time
+        )  # (B,c2,Z+1,H/2,W/2)
 
         d2 = self.ds2(e2)  # (B,c3,Z+1,H/4,H/4)
 
-        mid = self.mid(d2)  # (B,c3,Z+1,H/4,H/4)
+        mid = self.mid(
+            d2, film_scalar=film_sigma, film_spatial=film_time
+        )  # (B,c3,Z+1,H/4,H/4)
         if self.use_attn:
             mid = self.attn(mid)
 
         u2 = self.us2(mid)  # (B,c2,Z+1,H/2,H/2)
         u2 = torch.cat([u2, e2], dim=1)
         u2 = self.dec2_reduce(u2)
-        u2 = self.dec2(u2)
+        u2 = self.dec2(u2, film_scalar=film_sigma, film_spatial=film_time)
 
         u1 = self.us1(u2)  # (B,c1,Z+1,H,W)
         u1 = torch.cat([u1, e1], dim=1)
         u1 = self.dec1_reduce(u1)
-        u1 = self.dec1(u1)
+        u1 = self.dec1(u1, film_scalar=film_sigma, film_spatial=film_time)
 
         out = {}
         if self.use_mask:

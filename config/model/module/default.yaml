@@ -1,6 +1,7 @@
 unet:
   _target_: model.modules.UNet
   base_channel: 128
+  include_time: False
   time_emb_channel: 128
   sigma_emb_channel: 32
   mask_mode: concat
