@@ -35,9 +35,6 @@ def main(
     transform_input = Compose([CenterCrop(grid_high), Resize(grid_low)])
     transform_high = CenterCrop(grid_high)
 
-    if source_name != "RWRF":
-        input_dir = input_dir / source_name
-
     if initial_time is not None:
         input_files = [input_dir / f"{initial_time:%Y%m%d_%H%M}.h5"]
 
