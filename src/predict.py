@@ -76,9 +76,9 @@ def main(
                     )
                     data = transform(data.unsqueeze(0).to(dtype))
 
-                datas_static.append(data)
+                datas_static.append(data.squeeze(0))
 
-            datas_static = torch.stack(datas_static, dim=1)
+            datas_static = torch.stack(datas_static)
 
             time = [datetime.fromisoformat(t.decode("utf-8")) for t in f["time"]]
             if target_time is not None:
