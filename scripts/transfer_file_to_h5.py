@@ -30,7 +30,7 @@ def main(input_dir, file_type):
 
         case "nc":
             for file in sorted(input_dir.glob("*.nc")):
-                example_file = Path(env["INPUT_DIR"], f"{file.stem}.h5")
+                example_file = Path(env["INPUT_DIR"], f"{file.stem[:6]}.h5")
                 output_file = input_dir / f"{file.stem}.h5"
 
                 reader = NcReader(file)
